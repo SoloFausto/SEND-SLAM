@@ -1,0 +1,88 @@
+<mxfile host="app.diagrams.net" agent="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/138.0.0.0 Safari/537.36" version="28.1.2">
+  <diagram name="Page-1" id="zCn2BhDxBSUveuZZogCc">
+    <mxGraphModel dx="880" dy="573" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="850" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-8" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;startArrow=classic;startFill=1;" edge="1" parent="1" source="BOkhyp0HDTKcZf-CgFFP-3" target="BOkhyp0HDTKcZf-CgFFP-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-12" value="Supported Protocol" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="BOkhyp0HDTKcZf-CgFFP-8">
+          <mxGeometry x="-0.1034" relative="1" as="geometry">
+            <mxPoint y="11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-3" value="User Program" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;" vertex="1" parent="1">
+          <mxGeometry x="125" y="750.0000000000001" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-5" value="" style="swimlane;startSize=0;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="1">
+          <mxGeometry x="105" y="400" width="640" height="310" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-6" value="Messaging server" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#A8E1DD;strokeColor=#82b366;" vertex="1" parent="BOkhyp0HDTKcZf-CgFFP-5">
+          <mxGeometry x="20" y="220" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-7" value="SEND-SLAM" style="text;html=1;align=center;verticalAlign=middle;resizable=0;points=[];autosize=1;strokeColor=none;fillColor=none;" vertex="1" parent="BOkhyp0HDTKcZf-CgFFP-5">
+          <mxGeometry x="10" width="90" height="30" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-11" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=0;entryDx=0;entryDy=0;startArrow=classic;startFill=1;" edge="1" parent="BOkhyp0HDTKcZf-CgFFP-5" source="BOkhyp0HDTKcZf-CgFFP-9" target="BOkhyp0HDTKcZf-CgFFP-6">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-13" value="System State" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="BOkhyp0HDTKcZf-CgFFP-11">
+          <mxGeometry x="-0.1576" relative="1" as="geometry">
+            <mxPoint x="-29" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-27" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;startArrow=classic;startFill=1;" edge="1" parent="BOkhyp0HDTKcZf-CgFFP-5" source="BOkhyp0HDTKcZf-CgFFP-9" target="BOkhyp0HDTKcZf-CgFFP-26">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-9" value="SEND-SLAM Core" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;" vertex="1" parent="BOkhyp0HDTKcZf-CgFFP-5">
+          <mxGeometry x="255" y="125" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-18" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=1;entryY=0.5;entryDx=0;entryDy=0;exitX=0.5;exitY=0;exitDx=0;exitDy=0;" edge="1" parent="BOkhyp0HDTKcZf-CgFFP-5" target="BOkhyp0HDTKcZf-CgFFP-9">
+          <mxGeometry relative="1" as="geometry">
+            <mxPoint x="610" y="220" as="sourcePoint" />
+            <mxPoint x="425" y="155" as="targetPoint" />
+            <Array as="points">
+              <mxPoint x="565" y="220" />
+              <mxPoint x="565" y="155" />
+            </Array>
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-19" value="Calibration Parameters" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="BOkhyp0HDTKcZf-CgFFP-18">
+          <mxGeometry x="0.1255" relative="1" as="geometry">
+            <mxPoint x="-11" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-17" value="Calibration Front End" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#B9DFD2;strokeColor=#82b366;" vertex="1" parent="BOkhyp0HDTKcZf-CgFFP-5">
+          <mxGeometry x="500" y="220" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-25" value="SLAM Algorithm" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;" vertex="1" parent="BOkhyp0HDTKcZf-CgFFP-5">
+          <mxGeometry x="255" y="10" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-26" value="SLAM Adapter" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;" vertex="1" parent="BOkhyp0HDTKcZf-CgFFP-5">
+          <mxGeometry x="255" y="70" width="120" height="20" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-14" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="BOkhyp0HDTKcZf-CgFFP-10" target="BOkhyp0HDTKcZf-CgFFP-9">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-24" value="Frames, Sensor Data" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="BOkhyp0HDTKcZf-CgFFP-14">
+          <mxGeometry x="-0.3757" y="-3" relative="1" as="geometry">
+            <mxPoint x="-3" y="32" as="offset" />
+          </mxGeometry>
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-10" value="Sensors (Cameras, Etc.)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;" vertex="1" parent="1">
+          <mxGeometry x="360" y="750.0000000000001" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-20" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;entryX=0.5;entryY=1;entryDx=0;entryDy=0;" edge="1" parent="1" source="BOkhyp0HDTKcZf-CgFFP-16" target="BOkhyp0HDTKcZf-CgFFP-17">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-16" value="User" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;" vertex="1" parent="1">
+          <mxGeometry x="605" y="750" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="BOkhyp0HDTKcZf-CgFFP-28" value="Graphical Interface" style="edgeLabel;html=1;align=center;verticalAlign=middle;resizable=0;points=[];" vertex="1" connectable="0" parent="1">
+          <mxGeometry x="665" y="730" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
