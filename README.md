@@ -1,2 +1,2 @@
-# EZ-SLAM
-EZ-SLAM is an individual research project for COSC 482
+# SEND-SLAM
+SEND-SLAM is an individual research project for COSC 482
