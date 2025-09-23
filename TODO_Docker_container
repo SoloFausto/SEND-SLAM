@@ -1,0 +1,9 @@
+1 install sudo, build-essential, python3, python3-venv, python3-pip, git,libopencv-dev, libeigen3-dev, ninja-build, libboost-all-dev, libssl-dev
+2 build pangolin from source (https://github.com/stevenlovegrove/Pangolin.git) 
+2.1 run this script to install the prerequisites ./scripts/install_prerequisites.sh recommended
+2.2 cmake -B build -GNinja
+2.3 cmake --build build
+2.4 cmake --build build -t install
+
+3.0 git clone https://github.com/devansh0703/ORB_SLAM3.git
+3.2 run the build script
