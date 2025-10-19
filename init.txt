@@ -1,0 +1,2 @@
+{:ok, prod} = GenStage.start_link(SendSlam.CameraProducer, device_index: 0, width: 640, height: 480, fps: 30, buffer_size: 5)
+{:ok, _} = GenStage.start_link(SendSlam.ExampleConsumer, subscribe_to: [prod])

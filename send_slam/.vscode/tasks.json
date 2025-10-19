@@ -1,0 +1,14 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "mix deps.get && mix compile",
+			"type": "shell",
+			"command": "mix deps.get && mix compile",
+			"problemMatcher": [
+				"$mixCompile"
+			],
+			"group": "build"
+		}
+	]
+}
