@@ -12,6 +12,19 @@ defmodule SendSlam.Application do
     opts = [strategy: :one_for_one, name: SendSlam.Supervisor]
     {:ok, pid} = DynamicSupervisor.start_link(opts)
 
+    # Start a Registry to track WebSocket clients for broadcasting
+    _ =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {Registry, keys: :duplicate, name: SendSlam.WebSocketRegistry}
+      )
+
+    _ =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {Registry, keys: :duplicate, name: SendSlam.CalibrationRegistry}
+      )
+
     {:ok, cameraProducerPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
@@ -25,13 +38,26 @@ defmodule SendSlam.Application do
          ]}
       )
 
-    {:ok, cameraConsumerPid} =
+    {:ok, _cameraConsumerPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {SendSlam.ExampleConsumer, []}
       )
 
-    GenStage.sync_subscribe(cameraConsumerPid, to: cameraProducerPid)
+    {:ok, frameBroadcasterPid} =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {SendSlam.FrameBroadcaster, []}
+      )
+
+    {:ok, banditPid} =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {Bandit, plug: SendSlam.WebServer, port: 4000}
+      )
+
+    # Subscribe the frame broadcaster to the camera producer to forward frames to WebSocket clients
+    GenStage.sync_subscribe(frameBroadcasterPid, to: cameraProducerPid)
     {:ok, pid}
   end
 

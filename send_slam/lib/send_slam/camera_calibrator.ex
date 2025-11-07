@@ -54,8 +54,6 @@ defmodule SendSlam.CameraCalibrator do
   - `{:error, reason}` - Calibration failed
 
   ## Examples
-
-      iex> frames = capture_calibration_frames()
       iex> SendSlam.CameraCalibrator.calibrate(frames)
       {:ok, %{camera_matrix: ..., distortion_coeffs: ..., reprojection_error: 0.42}}
   """
@@ -130,37 +128,66 @@ defmodule SendSlam.CameraCalibrator do
     gray = Cv.cvtColor(frame, Cv.Constant.cv_COLOR_BGR2GRAY())
 
     # Find chessboard corners
+    # Note: evision (OpenCV) may return different shapes depending on version:
+    # - {true|false, corners_mat}
+    # - {:ok, {true|false, corners_mat}}
+    # - corners_mat (on success)
     case Cv.findChessboardCorners(gray, {width, height}) do
-      {:ok, corners} ->
-        # Refine corners to sub-pixel accuracy
-        refined_corners = refine_corners(gray, corners)
+      {true, %Evision.Mat{} = corners} ->
+        finish_detection(frame, gray, pattern_size, square_size, corners)
 
-        # Generate 3D object points
-        object_points = generate_object_points(pattern_size, square_size)
+      {false, _} ->
+        {:error, :pattern_not_found}
 
-        # Get image size
-        {img_height, img_width, _} = Cv.Mat.shape(frame)
-        image_size = {img_width, img_height}
+      {:ok, {true, %Evision.Mat{} = corners}} ->
+        finish_detection(frame, gray, pattern_size, square_size, corners)
 
-        {:ok, object_points, refined_corners, image_size}
+      {:ok, {false, _}} ->
+        {:error, :pattern_not_found}
 
-      {:error, _} ->
+      # Some builds return the corners mat directly on success
+      %Evision.Mat{} = corners ->
+        finish_detection(frame, gray, pattern_size, square_size, corners)
+
+      # Legacy wrappers may return {:ok, corners_mat}
+      {:ok, %Evision.Mat{} = corners} ->
+        finish_detection(frame, gray, pattern_size, square_size, corners)
+
+      _other ->
         {:error, :pattern_not_found}
     end
   end
 
+  # Complete the detection flow once corners are available
+  defp finish_detection(frame, gray, pattern_size, square_size, corners) do
+    # Refine corners to sub-pixel accuracy
+    refined_corners = refine_corners(gray, corners)
+
+    # Generate 3D object points
+    object_points = generate_object_points(pattern_size, square_size)
+
+    # Get image size
+    {img_height, img_width, _} = Cv.Mat.shape(frame)
+    image_size = {img_width, img_height}
+
+    {:ok, object_points, refined_corners, image_size}
+  end
+
   # Refine corner positions for better accuracy
   defp refine_corners(gray, corners) do
-    criteria =
-      Cv.TermCriteria.termCriteria(
-        Cv.Constant.cv_TERM_CRITERIA_EPS() + Cv.Constant.cv_TERM_CRITERIA_MAX_ITER(),
-        30,
-        0.001
-      )
+    # OpenCV/evision expects criteria as a 3-tuple: {type_flags, max_iter, epsilon}
+    # Use EPS + MAX_ITER like cv2 docs: (EPS | MAX_ITER, 30, 1e-3)
+    criteria = {
+      Cv.Constant.cv_EPS() + Cv.Constant.cv_MAX_ITER(),
+      30,
+      0.001
+    }
 
     case Cv.cornerSubPix(gray, corners, {11, 11}, {-1, -1}, criteria) do
-      {:ok, refined} -> refined
+      {:ok, %Evision.Mat{} = refined} -> refined
+      %Evision.Mat{} = refined -> refined
       {:error, _} -> corners
+      _ -> corners
     end
   end
 
@@ -181,27 +208,41 @@ defmodule SendSlam.CameraCalibrator do
   defp perform_calibration(object_points, image_points, {width, height}, successful_count) do
     Logger.info("Performing calibration with image size: #{width}x#{height}...")
 
-    case Cv.calibrateCamera(
-           object_points,
-           image_points,
-           {width, height},
-           Cv.Mat.empty(),
-           Cv.Mat.empty(),
-           flags: 0
-         ) do
-      {:ok, {rms_error, camera_matrix, dist_coeffs, _rvecs, _tvecs}} ->
-        calibration = %{
-          camera_matrix: camera_matrix,
-          distortion_coeffs: dist_coeffs,
-          reprojection_error: rms_error,
-          successful_frames: successful_count
-        }
+    result =
+      Cv.calibrateCamera(
+        object_points,
+        image_points,
+        {width, height},
+        Cv.Mat.empty(),
+        Cv.Mat.empty(),
+        flags: 0
+      )
 
-        Logger.info("Calibration successful! RMS error: #{rms_error}")
-        {:ok, calibration}
+    case result do
+      {:ok, {rms_error, camera_matrix, dist_coeffs, _rvecs, _tvecs}} ->
+        build_calibration(rms_error, camera_matrix, dist_coeffs, successful_count)
+
+      {rms_error, camera_matrix, dist_coeffs, _rvecs, _tvecs} ->
+        # Some evision versions return the tuple directly
+        build_calibration(rms_error, camera_matrix, dist_coeffs, successful_count)
 
       {:error, reason} ->
         {:error, {:calibration_failed, reason}}
+
+      other ->
+        {:error, {:unexpected_calibrate_return, other}}
     end
+  end
+
+  defp build_calibration(rms_error, camera_matrix, dist_coeffs, successful_count) do
+    calibration = %{
+      camera_matrix: camera_matrix,
+      distortion_coeffs: dist_coeffs,
+      reprojection_error: rms_error,
+      successful_frames: successful_count
+    }
+
+    Logger.info("Calibration successful! RMS error: #{rms_error}")
+    {:ok, calibration}
   end
 end

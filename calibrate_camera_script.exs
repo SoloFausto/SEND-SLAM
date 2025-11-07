@@ -134,12 +134,12 @@ defmodule CalibrateCamera do
   end
 
   defp refine_corners(gray, corners, _pattern_size) do
-    criteria =
-      Cv.TermCriteria.termCriteria(
-        Cv.Constant.cv_TERM_CRITERIA_EPS() + Cv.Constant.cv_TERM_CRITERIA_MAX_ITER(),
-        30,
-        0.001
-      )
+    # Criteria as tuple: {type_flags, max_iter, epsilon}
+    criteria = {
+      Cv.Constant.cv_EPS() + Cv.Constant.cv_ITER(),
+      30,
+      0.001
+    }
 
     case Cv.cornerSubPix(gray, corners, {11, 11}, {-1, -1}, criteria) do
       {:ok, refined} -> refined
@@ -160,25 +160,38 @@ defmodule CalibrateCamera do
   end
 
   defp perform_calibration(object_points, image_points, {width, height}) do
-    case Cv.calibrateCamera(
-           object_points,
-           image_points,
-           {width, height},
-           Cv.Mat.empty(),
-           Cv.Mat.empty(),
-           flags: 0
-         ) do
-      {:ok, {rms_error, camera_matrix, dist_coeffs, _rvecs, _tvecs}} ->
-        calibration = %{
-          camera_matrix: camera_matrix,
-          distortion_coeffs: dist_coeffs,
-          reprojection_error: rms_error
-        }
+    result =
+      Cv.calibrateCamera(
+        object_points,
+        image_points,
+        {width, height},
+        Cv.Mat.empty(),
+        Cv.Mat.empty(),
+        flags: 0
+      )
 
-        {:ok, calibration}
+    case result do
+      {:ok, {rms_error, camera_matrix, dist_coeffs, _rvecs, _tvecs}} ->
+        {:ok,
+         %{
+           camera_matrix: camera_matrix,
+           distortion_coeffs: dist_coeffs,
+           reprojection_error: rms_error
+         }}
+
+      {rms_error, camera_matrix, dist_coeffs, _rvecs, _tvecs} ->
+        {:ok,
+         %{
+           camera_matrix: camera_matrix,
+           distortion_coeffs: dist_coeffs,
+           reprojection_error: rms_error
+         }}
 
       {:error, reason} ->
         {:error, {:calibration_failed, reason}}
+
+      other ->
+        {:error, {:unexpected_calibrate_return, other}}
     end
   end
 end

@@ -19,12 +19,20 @@ defmodule SendSlam.CameraProducer do
   alias Evision.VideoCapture, as: VC
   alias Evision.VideoCaptureProperties, as: VCP
 
+  @type calibration_result :: %{
+          camera_matrix: Evision.Mat.t(),
+          distortion_coeffs: Evision.Mat.t(),
+          reprojection_error: float(),
+          successful_frames: non_neg_integer()
+        }
+
   @type opts :: [
           {:device_index, pos_integer()}
           | {:width, pos_integer()}
           | {:height, pos_integer()}
           | {:fps, pos_integer()}
           | {:name, atom() | {:via, module(), term()} | {:global, term()}}
+          | {:calibration, calibration_result() | nil}
         ]
 
   def start_link(opts \\ []) do
@@ -34,6 +42,7 @@ defmodule SendSlam.CameraProducer do
 
   @impl true
   def init(opts) do
+    _ = Registry.register(SendSlam.CalibrationRegistry, :clients, %{})
     fps = Keyword.fetch!(opts, :fps)
     interval_ms = max(1, div(1000, max(1, fps)))
 
@@ -98,6 +107,11 @@ defmodule SendSlam.CameraProducer do
             {:noreply, [{:error, reason}], %{state | pending_demand: state.pending_demand - 1}}
         end
     end
+  end
+
+  def handle_info({:calibration, calib_data}, state) do
+    new_state = Keyword.put(state.opts, :calibration, calib_data)
+    {:noreply, [], new_state}
   end
 
   @impl true

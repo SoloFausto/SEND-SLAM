@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SEND-SLAM Camera Stream</title>
+
+    <script>
+        
+        document.addEventListener('DOMContentLoaded', () => {
+            const img = document.getElementById('frame');
+            const statusEl = document.getElementById('status');
+            const fpsEl = document.getElementById('fps');
+            const capturedFramesEl = document.getElementById('captured-frames');
+            const wsProto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
+            const wsUrl = wsProto + location.host + '/ws';
+            const ws = new WebSocket(wsUrl);
+            const maxCapturedFrames = 10;
+            const blobToBase64 = blob => {
+                const reader = new FileReader();
+                reader.readAsDataURL(blob);
+                return new Promise(resolve => {
+                    reader.onloadend = () => {
+                        resolve(reader.result);
+                    };
+                });
+            };
+
+            ws.binaryType = 'blob';
+
+            let imgBlob = null;
+            let lastUrl = null;
+            let frames = 0;
+            let capturedFrames = [];
+            let lastFpsAt = performance.now();
+
+            function setStatus(text, cls) {
+                statusEl.textContent = text;
+                statusEl.className = 'status ' + (cls || '');
+            }
+
+            ws.addEventListener('open', () => setStatus('connected', 'ok'));
+            ws.addEventListener('close', () => setStatus('disconnected', 'err'));
+            ws.addEventListener('error', () => setStatus('error', 'err'));
+            const captureBtn = document.getElementById('capture');
+            captureBtn.addEventListener('click', () => {
+                blobToBase64(imgBlob).then(base64 => {
+                    currentCapturedFrame = base64;
+                    capturedFrames.push(currentCapturedFrame);
+                     if (capturedFrames.length >= maxCapturedFrames) {
+                        if (ws.readyState === WebSocket.OPEN) {
+                            console.log('Sending calibration frames to server:', capturedFrames);
+                            ws.send(JSON.stringify({ "calibrationFrames": capturedFrames }));
+                        }
+                        capturedFrames = [];
+                    }
+                    capturedFramesEl.textContent = `${capturedFrames.length} captured frame(s)`;
+                });
+            });
+            ws.addEventListener('message', (evt) => {
+                // Server may send initial text like a hello message; ignore for display
+                if (typeof evt.data === 'string') {
+                    console.debug('WS text:', evt.data);
+                    return;
+                }
+
+                imgBlob = evt.data;
+                const url = URL.createObjectURL(imgBlob);
+                img.src = url;
+
+                if (lastUrl) URL.revokeObjectURL(lastUrl);
+                lastUrl = url;
+
+                // Simple FPS counter
+                frames++;
+                const now = performance.now();
+                if (now - lastFpsAt >= 1000) {
+                    fpsEl.textContent = frames.toString();
+                    frames = 0;
+                    lastFpsAt = now;
+                }
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="wrap">
+        <div class="card">
+            <img id="frame" alt="Live camera frame" />
+            <div>WebSocket: <span id="status" class="status">connecting…</span></div>
+            <div>FPS: <span id="fps">0</span></div>
+            <div>Captured Frames: <span id="captured-frames"></span></div>
+            <button id="capture">Capture</button>
+        </div>
+    </div>
+</body>
+</html>
