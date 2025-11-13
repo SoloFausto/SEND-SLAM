@@ -22,7 +22,7 @@ defmodule SendSlam.FrameBroadcaster do
   @impl true
   def handle_events(events, _from, state) do
     Enum.each(events, fn
-      {:ok, %Cv.Mat{} = mat} ->
+      {:ok, frame: %Cv.Mat{} = mat} ->
         case encode_to_jpeg(mat) do
           {:ok, bin} -> broadcast_bin(bin)
           {:error, reason} -> Logger.warning("Failed to encode frame: #{inspect(reason)}")

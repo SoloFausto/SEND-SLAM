@@ -38,11 +38,11 @@ defmodule SendSlam.Application do
          ]}
       )
 
-    {:ok, _cameraConsumerPid} =
-      DynamicSupervisor.start_child(
-        SendSlam.Supervisor,
-        {SendSlam.ExampleConsumer, []}
-      )
+    # {:ok, _cameraConsumerPid} =
+    #   DynamicSupervisor.start_child(
+    #     SendSlam.Supervisor,
+    #     {SendSlam.ExampleConsumer, []}
+    #   )
 
     {:ok, frameBroadcasterPid} =
       DynamicSupervisor.start_child(

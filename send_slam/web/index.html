@@ -58,27 +58,34 @@
                 });
             });
             ws.addEventListener('message', (evt) => {
-                // Server may send initial text like a hello message; ignore for display
                 if (typeof evt.data === 'string') {
-                    console.debug('WS text:', evt.data);
-                    return;
+                    if(evt.data == "OK"){
+                        setStatus('Calibration successful', 'ok');
+                    } else if (evt.data == "ERROR") {
+                        setStatus('Calibration error', 'err');
+                    } else {
+                        console.log('Received text message from server:', evt.data);
+                    }
+                }
+                else{
+                    imgBlob = evt.data;
+                    const url = URL.createObjectURL(imgBlob);
+                    img.src = url;
+
+                    if (lastUrl) URL.revokeObjectURL(lastUrl);
+                    lastUrl = url;
+
+                    // Simple FPS counter
+                    frames++;
+                    const now = performance.now();
+                    if (now - lastFpsAt >= 1000) {
+                        fpsEl.textContent = frames.toString();
+                        frames = 0;
+                        lastFpsAt = now;
+                    }
                 }
 
-                imgBlob = evt.data;
-                const url = URL.createObjectURL(imgBlob);
-                img.src = url;
 
-                if (lastUrl) URL.revokeObjectURL(lastUrl);
-                lastUrl = url;
-
-                // Simple FPS counter
-                frames++;
-                const now = performance.now();
-                if (now - lastFpsAt >= 1000) {
-                    fpsEl.textContent = frames.toString();
-                    frames = 0;
-                    lastFpsAt = now;
-                }
             });
         });
     </script>
@@ -89,6 +96,7 @@
             <img id="frame" alt="Live camera frame" />
             <div>WebSocket: <span id="status" class="status">connecting…</span></div>
             <div>FPS: <span id="fps">0</span></div>
+            <div><span id="status" class="last-frame"></span></div>
             <div>Captured Frames: <span id="captured-frames"></span></div>
             <button id="capture">Capture</button>
         </div>

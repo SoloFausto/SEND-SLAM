@@ -223,7 +223,6 @@ defmodule SendSlam.CameraCalibrator do
         build_calibration(rms_error, camera_matrix, dist_coeffs, successful_count)
 
       {rms_error, camera_matrix, dist_coeffs, _rvecs, _tvecs} ->
-        # Some evision versions return the tuple directly
         build_calibration(rms_error, camera_matrix, dist_coeffs, successful_count)
 
       {:error, reason} ->

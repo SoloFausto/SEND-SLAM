@@ -97,7 +97,12 @@ defmodule SendSlam.CameraProducer do
       true ->
         case VC.read(state.cap) do
           %Evision.Mat{} = mat ->
-            {:noreply, [{:ok, mat}], %{state | pending_demand: state.pending_demand - 1}}
+            if(state.opts[:calibration]) do
+              {:noreply, [{:ok, frame: mat, calibration: state.opts[:calibration]}],
+               %{state | pending_demand: state.pending_demand - 1}}
+            else
+              {:noreply, [{:ok, frame: mat}], %{state | pending_demand: state.pending_demand - 1}}
+            end
 
           false ->
             {:noreply, [{:error, :eof_or_disconnected}],

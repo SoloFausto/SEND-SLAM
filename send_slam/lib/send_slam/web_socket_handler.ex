@@ -31,27 +31,31 @@ defmodule SendSlam.WebSocketHandler do
 
     case SendSlam.CameraCalibrator.calibrate(frames) do
       {:ok, calibration} ->
-        Logger.info("Calibration successful: #{inspect(calibration)}")
+        Logger.info("Calibration successful: #{inspect(calibration.camera_matrix)}")
+
+        broadcast_message(
+          {:calibration, calibration},
+          SendSlam.CalibrationRegistry
+        )
+
+        {:push, {:text, "OK"}, state}
 
       {:error, reason} ->
         Logger.error("Calibration failed: #{inspect(reason)}")
+        {:push, {:text, "ERROR"}, state}
     end
-
-    {:push, {:text, "OK"}, state}
   end
 
   def terminate(_reason, _state) do
     :ok
   end
 
-  # --- Internal helpers ---
-
-  defp broadcast_frame(data) when is_binary(data) do
+  defp broadcast_message(message, registry) do
     from = self()
 
-    Registry.dispatch(SendSlam.WebSocketRegistry, :clients, fn entries ->
+    Registry.dispatch(registry, :clients, fn entries ->
       for {pid, _} <- entries, pid != from do
-        send(pid, {:broadcast_frame, data})
+        send(pid, {:broadcast_message, message})
       end
     end)
 
