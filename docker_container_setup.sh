@@ -33,5 +33,8 @@ cd ORB_SLAM3
 chmod +x ./build.sh
 ./build.sh
 sudo ldconfig
+cd ..
+
+
 
 echo "=== Setup complete! ==="

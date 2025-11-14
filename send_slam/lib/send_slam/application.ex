@@ -6,7 +6,7 @@ defmodule SendSlam.Application do
   use Application
   require Logger
   require GenStage
-
+  require ThousandIsland
   @impl true
   def start(_type, _args) do
     opts = [strategy: :one_for_one, name: SendSlam.Supervisor]
@@ -50,11 +50,28 @@ defmodule SendSlam.Application do
         {SendSlam.FrameBroadcaster, []}
       )
 
+    {:ok, dockerHandlerPid} =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {SendSlam.DockerHandler,
+         [
+           image: "orbslam3",
+           name: "orbslam3",
+           monitor_interval: 5_000,
+           env: %{
+             "ORBSLAM3_MAP_PATH" => System.get_env("ORBSLAM3_MAP_PATH") || "/data/maps"
+           },
+           auto_restart: true
+         ]}
+      )
+
     {:ok, banditPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {Bandit, plug: SendSlam.WebServer, port: 4000}
       )
+
+    {:ok, pid} = ThousandIsland.start_link(port: 1234, handler_module: Echo)
 
     # Subscribe the frame broadcaster to the camera producer to forward frames to WebSocket clients
     GenStage.sync_subscribe(frameBroadcasterPid, to: cameraProducerPid)
