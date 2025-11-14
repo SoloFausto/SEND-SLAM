@@ -12,7 +12,7 @@ apt-get install -y \
     libc++-dev libepoxy-dev libglew-dev libeigen3-dev cmake g++ ninja-build \
     libjpeg-dev libpng-dev catch2 \
     libavcodec-dev libavutil-dev libavformat-dev libswscale-dev libavdevice-dev \
-    libdc1394-dev libraw1394-dev libopenni-dev python3-dev
+    libdc1394-dev libraw1394-dev libopenni-dev python3-dev wget
 
 # 2. Build Pangolin from source
 echo "=== Cloning and building Pangolin ==="
@@ -33,7 +33,18 @@ cd ORB_SLAM3
 chmod +x ./build.sh
 ./build.sh
 sudo ldconfig
-cd ..
+
+wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orbslam3_mono_networked.cc -O ./orbslam3_mono_networked.cc
+
+g++ -std=c++17 -O3 orbslam3_mono_networked.cc -o orbslam3_mono_networked \
+    $(pkg-config --cflags --libs opencv4) \
+    -I. -I./include -I/usr/local/include -I/usr/include/eigen3 \
+    -I./Thirdparty/Sophus \
+    -L./lib -L./Thirdparty/DBoW2/lib -L./Thirdparty/g2o/lib -L/usr/local/lib \
+    -lORB_SLAM3 -lDBoW2 -lg2o -lpangolin -pthread -lboost_system -lssl -lcrypto
+
+
+chmod +x orbslam3_mono_networked
 
 
 

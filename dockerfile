@@ -6,6 +6,8 @@ WORKDIR /app
 
 COPY docker_container_setup.sh .
 
+ENTRYPOINT [ "/app/orbslam3_mono_networked" ]
+
 RUN chmod +x docker_container_setup.sh
 
 RUN apt-get update && \
