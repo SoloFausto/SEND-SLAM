@@ -37,7 +37,7 @@ link_directories(
 )
 
 # Source file (copy or symlink orbslam3_mono_networked.cc into this directory or point to original)
-set(NETWORKED_SRC ${CMAKE_SOURCE_DIR}/slam_backends/orbslam3_mono_networked.cc)
+set(NETWORKED_SRC ${CMAKE_SOURCE_DIR}/orbslam3_mono_networked.cc)
 if(NOT EXISTS ${NETWORKED_SRC})
   message(FATAL_ERROR "orbslam3_mono_networked.cc not found at ${NETWORKED_SRC}")
 endif()

@@ -34,14 +34,14 @@ chmod +x ./build.sh
 ./build.sh
 sudo ldconfig
 
-wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orbslam3_mono_networked.cc -O ./orbslam3_mono_networked.cc
+mkdir -p build_orb
+cd build_orb
 
-g++ -std=c++17 -O3 orbslam3_mono_networked.cc -o orbslam3_mono_networked \
-    $(pkg-config --cflags --libs opencv4) \
-    -I. -I./include -I/usr/local/include -I/usr/include/eigen3 \
-    -I./Thirdparty/Sophus \
-    -L./lib -L./Thirdparty/DBoW2/lib -L./Thirdparty/g2o/lib -L/usr/local/lib \
-    -lORB_SLAM3 -lDBoW2 -lg2o -lpangolin -pthread -lboost_system -lssl -lcrypto
+wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/orbslam3_mono_networked.cc -O ./orbslam3_mono_networked.cc
+wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/CMakeLists.txt -O ./CMakeLists.txt
+
+cmake -DORB_SLAM3_ROOT:PATH=../ORB_SLAM3 -S . -B .
+cmake --build . -j
 
 
 chmod +x orbslam3_mono_networked
