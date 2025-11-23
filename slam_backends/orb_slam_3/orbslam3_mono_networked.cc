@@ -119,15 +119,7 @@ namespace
 
 int main(int argc, char **argv)
 {
-        if (argc != 2)
-        {
-                cerr << endl
-                     << "Usage: ./mono_websocket path_to_vocabulary" << endl;
-                cerr << "Requires ORB_SLAM3_WS_PORT environment variable for TCP port." << endl;
-                return 1;
-        }
-
-        const string vocabularyPath = argv[1];
+        const string vocabularyPath = "/app/ORB_SLAM3/Vocabulary/ORBvoc.txt";
 
         const char *portEnv = std::getenv("ORB_SLAM3_WS_PORT");
         if (portEnv == nullptr)

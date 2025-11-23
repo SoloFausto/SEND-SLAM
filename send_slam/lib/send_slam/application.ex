@@ -55,8 +55,8 @@ defmodule SendSlam.Application do
         SendSlam.Supervisor,
         {SendSlam.DockerHandler,
          [
-           image: "orbslam3",
-           name: "orbslam3",
+           image: "net-orbslam",
+           name: "net-orbslam",
            monitor_interval: 5_000,
            env: %{
              "ORBSLAM3_MAP_PATH" => System.get_env("ORBSLAM3_MAP_PATH") || "/data/maps"
