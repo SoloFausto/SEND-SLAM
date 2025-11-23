@@ -280,7 +280,8 @@ int main(int argc, char **argv)
                                         tempSettingsPath.clear();
                                 }
 
-                                const filesystem::path tempFileName = filesystem::unique_path("orbslam_ws_settings-%%%%-%%%%.yaml");
+                                const auto stamp = std::chrono::steady_clock::now().time_since_epoch().count();
+                                const filesystem::path tempFileName = "orbslam_ws_settings-" + std::to_string(stamp) + ".yaml";
                                 tempSettingsPath = filesystem::temp_directory_path() / tempFileName;
                                 ofstream settingsFile(tempSettingsPath);
                                 if (!settingsFile.is_open())

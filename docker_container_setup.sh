@@ -14,6 +14,8 @@ apt-get install -y \
     libavcodec-dev libavutil-dev libavformat-dev libswscale-dev libavdevice-dev \
     libdc1394-dev libraw1394-dev libopenni-dev python3-dev wget
 
+rm -rf /var/lib/apt/lists/*
+
 # 2. Build Pangolin from source
 echo "=== Cloning and building Pangolin ==="
 git clone https://github.com/stevenlovegrove/Pangolin.git
@@ -25,6 +27,16 @@ sudo cmake --build build -t install
 
 cd ..
 
+# 3. Build message pack for C++
+git clone https://github.com/msgpack/msgpack-c.git
+cd msgpack-c
+git checkout cpp_master
+mkdir build
+cd build
+cmake ..
+cmake --build .
+cmake --build . --target install
+cd ../..
 # 3. Clone and build ORB_SLAM3
 echo "=== Cloning and building ORB_SLAM3 ==="
 git clone https://github.com/devansh0703/ORB_SLAM3.git
@@ -32,21 +44,17 @@ cd ORB_SLAM3
 
 mkdir Networked
 wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/orbslam3_mono_networked.cc -O ./Networked/orbslam3_mono_networked.cc
-
+rm -f CMakeLists.txt
+wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/CMakeLists.txt -O ./CMakeLists.txt
 
 
 chmod +x ./build.sh
 ./build.sh
 sudo ldconfig
 
-mkdir -p build_orb
-cd build_orb
 
 
-
-
-chmod +x orbslam3_mono_networked
-
+chmod +x Networked/orbslam3_mono_networked
 
 
 echo "=== Setup complete! ==="
