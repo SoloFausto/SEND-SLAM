@@ -30,6 +30,11 @@ echo "=== Cloning and building ORB_SLAM3 ==="
 git clone https://github.com/devansh0703/ORB_SLAM3.git
 cd ORB_SLAM3
 
+mkdir Networked
+wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/orbslam3_mono_networked.cc -O ./Networked/orbslam3_mono_networked.cc
+
+
+
 chmod +x ./build.sh
 ./build.sh
 sudo ldconfig
@@ -37,11 +42,7 @@ sudo ldconfig
 mkdir -p build_orb
 cd build_orb
 
-wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/orbslam3_mono_networked.cc -O ./orbslam3_mono_networked.cc
-wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/CMakeLists.txt -O ./CMakeLists.txt
 
-cmake -DORB_SLAM3_ROOT:PATH=../ORB_SLAM3 -S . -B .
-cmake --build . -j
 
 
 chmod +x orbslam3_mono_networked

@@ -1,111 +1,137 @@
-cmake_minimum_required(VERSION 3.10)
-project(orbslam3_mono_networked LANGUAGES CXX)
+cmake_minimum_required(VERSION 3.16)
+project(ORB_SLAM3)
 
-# Allow override of ORB_SLAM3 location if already cloned externally
-set(ORB_SLAM3_ROOT "${CMAKE_SOURCE_DIR}/ORB_SLAM3" CACHE PATH "Path to ORB_SLAM3 root containing include/ and lib/")
+IF(NOT CMAKE_BUILD_TYPE)
+  SET(CMAKE_BUILD_TYPE Release)
+ENDIF()
 
-set(CMAKE_CXX_STANDARD 17)
+MESSAGE("Build type: " ${CMAKE_BUILD_TYPE})
+
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS}  -Wall   -O3")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall   -O3")
+set(CMAKE_C_FLAGS_RELEASE "${CMAKE_C_FLAGS_RELEASE} -march=native")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native")
+
+# Use C++23
+set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
+add_definitions(-DCOMPILEDWITHC23)
+message(STATUS "Using C++23 standard.")
 
-# Prefer Release unless user sets CMAKE_BUILD_TYPE
-if(NOT CMAKE_BUILD_TYPE)
-  set(CMAKE_BUILD_TYPE Release CACHE STRING "Build type" FORCE)
-endif()
+LIST(APPEND CMAKE_MODULE_PATH ${PROJECT_SOURCE_DIR}/cmake_modules)
 
-# Dependencies: OpenCV, Pangolin, Eigen
 find_package(OpenCV REQUIRED)
+if(NOT OpenCV_FOUND)
+   message(FATAL_ERROR "OpenCV not found.")
+endif()
+
+MESSAGE("OPENCV VERSION:")
+MESSAGE(${OpenCV_VERSION})
+
+find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
-find_package(Eigen3 REQUIRED)
+find_package(realsense2)
 
-# Include paths
 include_directories(
-  ${OpenCV_INCLUDE_DIRS}
-  ${Pangolin_INCLUDE_DIRS}
-  ${EIGEN3_INCLUDE_DIR}
-  ${ORB_SLAM3_ROOT}/include
-  ${ORB_SLAM3_ROOT}/Thirdparty/DBoW2/DBoW2
-  ${ORB_SLAM3_ROOT}/Thirdparty/g2o
-  ${ORB_SLAM3_ROOT}/Thirdparty/Sophus
+${PROJECT_SOURCE_DIR}
+${PROJECT_SOURCE_DIR}/include
+${PROJECT_SOURCE_DIR}/include/CameraModels
+${PROJECT_SOURCE_DIR}/Thirdparty/Sophus
+${EIGEN3_INCLUDE_DIR}
+${Pangolin_INCLUDE_DIRS}
 )
 
-# Library paths (if ORB_SLAM3 build.sh was executed)
-link_directories(
-  ${ORB_SLAM3_ROOT}/lib
-  ${ORB_SLAM3_ROOT}/Thirdparty/DBoW2/lib
-  ${ORB_SLAM3_ROOT}/Thirdparty/g2o/lib
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
+
+add_library(${PROJECT_NAME} SHARED
+src/System.cc
+src/Tracking.cc
+src/LocalMapping.cc
+src/LoopClosing.cc
+src/ORBextractor.cc
+src/ORBmatcher.cc
+src/FrameDrawer.cc
+src/Converter.cc
+src/MapPoint.cc
+src/KeyFrame.cc
+src/Atlas.cc
+src/Map.cc
+src/MapDrawer.cc
+src/Optimizer.cc
+src/Frame.cc
+src/KeyFrameDatabase.cc
+src/Sim3Solver.cc
+src/Viewer.cc
+src/ImuTypes.cc
+src/G2oTypes.cc
+src/CameraModels/Pinhole.cpp
+src/CameraModels/KannalaBrandt8.cpp
+src/OptimizableTypes.cpp
+src/MLPnPsolver.cpp
+src/GeometricTools.cc
+src/TwoViewReconstruction.cc
+src/Config.cc
+src/Settings.cc
+include/System.h
+include/Tracking.h
+include/LocalMapping.h
+include/LoopClosing.h
+include/ORBextractor.h
+include/ORBmatcher.h
+include/FrameDrawer.h
+include/Converter.h
+include/MapPoint.h
+include/KeyFrame.h
+include/Atlas.h
+include/Map.h
+include/MapDrawer.h
+include/Optimizer.h
+include/Frame.h
+include/KeyFrameDatabase.h
+include/Sim3Solver.h
+include/Viewer.h
+include/ImuTypes.h
+include/G2oTypes.h
+include/CameraModels/GeometricCamera.h
+include/CameraModels/Pinhole.h
+include/CameraModels/KannalaBrandt8.h
+include/OptimizableTypes.h
+include/MLPnPsolver.h
+include/GeometricTools.h
+include/TwoViewReconstruction.h
+include/SerializationUtils.h
+include/Config.h
+include/Settings.h)
+
+add_subdirectory(Thirdparty/g2o)
+
+target_link_libraries(${PROJECT_NAME}
+${OpenCV_LIBS}
+${EIGEN3_LIBS}
+${Pangolin_LIBRARIES}
+${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
+${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
+-lboost_serialization
+-lcrypto
 )
 
-# Source file (copy or symlink orbslam3_mono_networked.cc into this directory or point to original)
-set(NETWORKED_SRC ${CMAKE_SOURCE_DIR}/orbslam3_mono_networked.cc)
-if(NOT EXISTS ${NETWORKED_SRC})
-  message(FATAL_ERROR "orbslam3_mono_networked.cc not found at ${NETWORKED_SRC}")
+# If RealSense SDK is found the library is added and its examples compiled
+if(realsense2_FOUND)
+    include_directories(${PROJECT_NAME}
+    ${realsense_INCLUDE_DIR}
+    )
+    target_link_libraries(${PROJECT_NAME}
+    ${realsense2_LIBRARY}
+    )
 endif()
 
-add_executable(orbslam3_mono_networked ${NETWORKED_SRC})
 
-# Link libraries; names may differ based on ORB_SLAM3 fork (DBoW2 vs DBoW2, g2o components). Adjust if needed.
-# Basic set:
-#  - ORB_SLAM3 main library
-#  - DBoW2 vocabulary lib
-#  - g2o core libs (some forks build monolithic g2o)
-# Pangolin + OpenCV + system libs.
+# Build examples
 
-# Attempt to link common g2o component libs if present
-foreach(g2o_lib g2o_core g2o_stuff g2o_types_sba g2o_types_sim3 g2o_solver_csparse g2o_solver_dense g2o_solver_pcg g2o_types_slam3d g2o_types_slam2d)
-  find_library(${g2o_lib}_PATH NAMES ${g2o_lib} PATHS ${ORB_SLAM3_ROOT}/Thirdparty/g2o/lib NO_DEFAULT_PATH)
-  if(${g2o_lib}_PATH)
-    list(APPEND G2O_FOUND_LIBS ${${g2o_lib}_PATH})
-  endif()
-endforeach()
+#Monocular examples
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/Networked)
 
-# Fallback: link just g2o
-find_library(G2O_LIB NAMES g2o PATHS ${ORB_SLAM3_ROOT}/Thirdparty/g2o/lib NO_DEFAULT_PATH)
-if(G2O_LIB AND NOT G2O_FOUND_LIBS)
-  set(G2O_FOUND_LIBS ${G2O_LIB})
-endif()
-
-# DBoW2
-find_library(DBOW2_LIB NAMES DBoW2 PATHS ${ORB_SLAM3_ROOT}/Thirdparty/DBoW2/lib NO_DEFAULT_PATH)
-
-# ORB_SLAM3
-find_library(ORB_SLAM3_LIB NAMES ORB_SLAM3 PATHS ${ORB_SLAM3_ROOT}/lib NO_DEFAULT_PATH)
-
-# Compose link list
-set(LINK_LIBS
-  ${ORB_SLAM3_LIB}
-  ${DBOW2_LIB}
-  ${G2O_FOUND_LIBS}
-  ${Pangolin_LIBRARIES}
-  ${OpenCV_LIBS}
-  pthread boost_system ssl crypto
-)
-
-# Filter out any NOTFOUND entries
-list(FILTER LINK_LIBS EXCLUDE REGEX "NOTFOUND")
-
-if(NOT ORB_SLAM3_LIB)
-  message(WARNING "ORB_SLAM3 library not found; build may fail. Did you run build.sh in ORB_SLAM3?")
-endif()
-
-if(NOT DBOW2_LIB)
-  message(WARNING "DBoW2 library not found; build may fail.")
-endif()
-
-if(NOT G2O_FOUND_LIBS)
-  message(WARNING "No g2o component libraries detected; relying on possible monolithic g2o or transitive linkage.")
-endif()
-
-message(STATUS "Linking with libs: ${LINK_LIBS}")
-
-target_link_libraries(orbslam3_mono_networked PRIVATE ${LINK_LIBS})
-
-target_compile_definitions(orbslam3_mono_networked PRIVATE EIGEN_NO_DEBUG)
-
-# Suggest run command
-add_custom_target(run_networked
-  COMMAND orbslam3_mono_networked
-  DEPENDS orbslam3_mono_networked
-  WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
-  COMMENT "Run orbslam3_mono_networked executable"
-)
+add_executable(orbslam3_mono_networked
+        Networked/orbslam3_mono_networked.cc)
+target_link_libraries(orbslam3_mono_networked ${PROJECT_NAME})
