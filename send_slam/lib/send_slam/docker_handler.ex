@@ -91,7 +91,6 @@ defmodule SendSlam.DockerHandler do
         {:reply, {:ok, container_id}, new_state}
 
       {:error, reason} ->
-        # Fail fast so supervisor can restart us
         {:stop, {:container_start_failed, reason}, {:error, reason}, %{state | state: :error}}
     end
   end
@@ -155,7 +154,9 @@ defmodule SendSlam.DockerHandler do
   defp run_container(state) do
     # Build env args
     env_args = Enum.flat_map(state.env_map, fn {k, v} -> ["-e", "#{k}=#{v}"] end)
-    args = ["run", "-d", "--name", state.name] ++ env_args ++ [state.image]
+    # --rm keeps the container ephemeral so Docker cleans it up automatically on exit
+    args =
+      ["run", "-d", "--rm", "--name", state.name, "--network=host"] ++ env_args ++ [state.image]
 
     case docker_cmd(state.docker_bin, args) do
       {:ok, id} -> {:ok, String.trim(id)}
@@ -165,8 +166,11 @@ defmodule SendSlam.DockerHandler do
 
   defp stop_container_cmd(state) do
     case docker_cmd(state.docker_bin, ["rm", "-f", state.name]) do
-      {:ok, _} -> :ok
-      {:error, reason} -> {:error, reason}
+      {:ok, _} ->
+        :ok
+
+      {:error, reason} ->
+        {:error, reason}
     end
   end
 

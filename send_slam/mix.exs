@@ -27,7 +27,8 @@ defmodule SendSlam.MixProject do
       {:bandit, "~> 1.8"},
       {:websock_adapter, "~> 0.5"},
       {:plug, "~> 1.16"},
-      {:jason, "~> 1.4"}
+      {:jason, "~> 1.4"},
+      {:msgpax, "~> 2.3"}
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
     ]

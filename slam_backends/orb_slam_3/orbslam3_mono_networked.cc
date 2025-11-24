@@ -24,10 +24,12 @@
 #include <filesystem>
 #include <fstream>
 #include <iostream>
+#include <map>
 #include <memory>
 #include <numeric>
 #include <stdexcept>
 #include <string>
+#include <sstream>
 #include <system_error>
 #include <vector>
 
@@ -49,16 +51,171 @@ using tcp = boost::asio::ip::tcp;
 
 namespace
 {
+        struct CameraCalibration
+        {
+                string type;
+                double fx = 0.0;
+                double fy = 0.0;
+                double cx = 0.0;
+                double cy = 0.0;
+                double k1 = 0.0;
+                double k2 = 0.0;
+                double p1 = 0.0;
+                double p2 = 0.0;
+                int width = 0;
+                int height = 0;
+                double fps = 0.0;
+                int rgb = 0;
+                double stereoThDepth = 0.0;
+                double stereoBaseline = 0.0;
+                double depthMapFactor = 0.0;
+        };
         struct MessagePacket
         {
                 string type;
-                string calibrationYaml;
                 vector<uint8_t> imageData;
                 double timestamp = 0.0;
                 bool hasImage = false;
                 bool hasTimestamp = false;
                 int camera_id = 0;
+                bool hasCalibrationParameters = false;
+                CameraCalibration calibrationParameters;
         };
+
+        template <typename T>
+        T RequireScalar(const map<string, msgpack::object> &node, const string &section, const string &key)
+        {
+                const auto it = node.find(key);
+                if (it == node.end())
+                {
+                        throw runtime_error("Calibration section '" + section + "' is missing key '" + key + "'");
+                }
+
+                try
+                {
+                        return it->second.as<T>();
+                }
+                catch (const exception &ex)
+                {
+                        throw runtime_error("Failed to parse key '" + section + "." + key + "': " + string(ex.what()));
+                }
+        }
+
+        CameraCalibration ParseCameraCalibration(const msgpack::object &obj)
+        {
+                if (obj.type != msgpack::type::MAP)
+                {
+                        throw runtime_error("Calibration 'camera' field must be a map");
+                }
+
+                map<string, msgpack::object> node;
+                obj.convert(node);
+
+                CameraCalibration camera;
+                camera.type = RequireScalar<string>(node, "camera", "type");
+                camera.fx = RequireScalar<double>(node, "camera", "fx");
+                camera.fy = RequireScalar<double>(node, "camera", "fy");
+                camera.cx = RequireScalar<double>(node, "camera", "cx");
+                camera.cy = RequireScalar<double>(node, "camera", "cy");
+                camera.k1 = RequireScalar<double>(node, "camera", "k1");
+                camera.k2 = RequireScalar<double>(node, "camera", "k2");
+                camera.p1 = RequireScalar<double>(node, "camera", "p1");
+                camera.p2 = RequireScalar<double>(node, "camera", "p2");
+                camera.width = RequireScalar<int>(node, "camera", "width");
+                camera.height = RequireScalar<int>(node, "camera", "height");
+                camera.fps = RequireScalar<double>(node, "camera", "fps");
+                camera.rgb = RequireScalar<int>(node, "camera", "rgb");
+                camera.stereoThDepth = RequireScalar<double>(node, "camera", "th_depth");
+                camera.stereoBaseline = RequireScalar<double>(node, "camera", "baseline");
+                camera.depthMapFactor = RequireScalar<double>(node, "camera", "depth_map_factor");
+                return camera;
+        }
+
+        CameraCalibration ParseCalibrationParameters(const msgpack::object &obj)
+        {
+                if (obj.type != msgpack::type::MAP)
+                {
+                        throw runtime_error("Calibration payload must be a map");
+                }
+
+                map<string, msgpack::object> root;
+                obj.convert(root);
+
+                const auto it = root.find("camera");
+                if (it != root.end())
+                {
+                        return ParseCameraCalibration(it->second);
+                }
+
+                return ParseCameraCalibration(obj);
+        }
+
+        string BuildCalibrationYaml(const CameraCalibration &camera)
+        {
+                ostringstream oss;
+                oss << "%YAML:1.0\n\n";
+                oss << "#--------------------------------------------------------------------------------------------\n";
+                oss << "# Camera Parameters. Adjust them!\n";
+                oss << "#--------------------------------------------------------------------------------------------\n";
+                oss << "File.version: \"1.0\"\n\n";
+                oss << "Camera.type: \"" << camera.type << "\"\n\n";
+                oss << "# Right Camera calibration and distortion parameters (OpenCV)\n";
+                oss << "Camera1.fx: " << camera.fx << "\n";
+                oss << "Camera1.fy: " << camera.fy << "\n";
+                oss << "Camera1.cx: " << camera.cx << "\n";
+                oss << "Camera1.cy: " << camera.cy << "\n\n";
+                oss << "# distortion parameters\n";
+                oss << "Camera1.k1: " << camera.k1 << "\n";
+                oss << "Camera1.k2: " << camera.k2 << "\n";
+                oss << "Camera1.p1: " << camera.p1 << "\n";
+                oss << "Camera1.p2: " << camera.p2 << "\n\n";
+                oss << "# Camera resolution\n";
+                oss << "Camera.width: " << camera.width << "\n";
+                oss << "Camera.height: " << camera.height << "\n\n";
+                oss << "# Camera frames per second \n";
+                oss << "Camera.fps: " << camera.fps << "\n\n";
+                oss << "# Color order of the images (0: BGR, 1: RGB. It is ignored if images are grayscale)\n";
+                oss << "Camera.RGB: " << camera.rgb << "\n\n";
+                oss << "Stereo.ThDepth: " << camera.stereoThDepth << "\n";
+                oss << "Stereo.b: " << camera.stereoBaseline << "\n\n";
+                oss << "# Depth map values factor\n";
+                oss << "RGBD.DepthMapFactor: " << camera.depthMapFactor << "\n\n";
+                oss << R"(# Transformation from body-frame (imu) to left camera
+#--------------------------------------------------------------------------------------------
+# ORB Parameters
+#--------------------------------------------------------------------------------------------
+# ORB Extractor: Number of features per image
+ORBextractor.nFeatures: 1250
+
+# ORB Extractor: Scale factor between levels in the scale pyramid 	
+ORBextractor.scaleFactor: 1.2
+
+# ORB Extractor: Number of levels in the scale pyramid	
+ORBextractor.nLevels: 8
+
+# ORB Extractor: Fast threshold
+# Image is divided in a grid. At each cell FAST are extracted imposing a minimum response.
+# Firstly we impose iniThFAST. If no corners are detected we impose a lower value minThFAST
+# You can lower these values if your images have low contrast			
+ORBextractor.iniThFAST: 20
+ORBextractor.minThFAST: 7
+
+#--------------------------------------------------------------------------------------------
+# Viewer Parameters
+#--------------------------------------------------------------------------------------------
+Viewer.KeyFrameSize: 0.05
+Viewer.KeyFrameLineWidth: 1.0
+Viewer.GraphLineWidth: 0.9
+Viewer.PointSize: 2.0
+Viewer.CameraSize: 0.08
+Viewer.CameraLineWidth: 3.0
+Viewer.ViewpointX: 0.0
+Viewer.ViewpointY: -0.7
+Viewer.ViewpointZ: -3.5
+Viewer.ViewpointF: 500.0
+)";
+                return oss.str();
+        }
 
         bool ParseMessage(const vector<uint8_t> &payload, MessagePacket &packet)
         {
@@ -82,9 +239,10 @@ namespace
                         {
                                 value.convert(packet.type);
                         }
-                        else if (key == "yaml" || key == "settings" || key == "calibration")
+                        else if (key == "calibration" || key == "calibration_params")
                         {
-                                value.convert(packet.calibrationYaml);
+                                packet.calibrationParameters = ParseCalibrationParameters(value);
+                                packet.hasCalibrationParameters = true;
                         }
                         else if (key == "timestamp")
                         {
@@ -254,16 +412,20 @@ int main(int argc, char **argv)
 
                         if (packet.type == "calibration")
                         {
-                                if (packet.calibrationYaml.empty())
-                                {
-                                        cerr << "Calibration message missing 'yaml' field." << endl;
-                                        continue;
-                                }
                                 if (!packet.camera_id)
                                 {
-                                        cerr << "Frame message missing camera identifier." << endl;
+                                        cerr << "Calibration message missing camera identifier." << endl;
                                         continue;
                                 }
+
+                                string calibrationContents;
+                                if (!packet.hasCalibrationParameters)
+                                {
+                                        cerr << "Calibration message missing structured parameter payload." << endl;
+                                        continue;
+                                }
+
+                                const string calibrationContents = BuildCalibrationYaml(packet.calibrationParameters);
 
                                 if (!tempSettingsPath.empty())
                                 {
@@ -281,7 +443,7 @@ int main(int argc, char **argv)
                                         cerr << "Failed to create temporary settings file at " << tempSettingsPath << endl;
                                         return 1;
                                 }
-                                settingsFile << packet.calibrationYaml;
+                                settingsFile << calibrationContents;
                                 settingsFile.close();
 
                                 pSLAM = make_unique<ORB_SLAM3::System>(vocabularyPath, tempSettingsPath.string(), ORB_SLAM3::System::MONOCULAR, true);

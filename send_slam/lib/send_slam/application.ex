@@ -25,6 +25,18 @@ defmodule SendSlam.Application do
         {Registry, keys: :duplicate, name: SendSlam.CalibrationRegistry}
       )
 
+    _ =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {Registry, keys: :duplicate, name: SendSlam.BackendRegistry}
+      )
+
+    _ =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {Registry, keys: :duplicate, name: SendSlam.TcpClientRegistry}
+      )
+
     {:ok, cameraProducerPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
@@ -38,7 +50,7 @@ defmodule SendSlam.Application do
          ]}
       )
 
-    # {:ok, _cameraConsumerPid} =
+    # {:ok, cameraConsumerPid} =
     #   DynamicSupervisor.start_child(
     #     SendSlam.Supervisor,
     #     {SendSlam.ExampleConsumer, []}
@@ -49,6 +61,8 @@ defmodule SendSlam.Application do
         SendSlam.Supervisor,
         {SendSlam.FrameBroadcaster, []}
       )
+
+    {:ok, pid} = ThousandIsland.start_link(port: 5000, handler_module: SendSlam.SlamHandler)
 
     {:ok, dockerHandlerPid} =
       DynamicSupervisor.start_child(
@@ -65,16 +79,25 @@ defmodule SendSlam.Application do
          ]}
       )
 
+    {:ok, imageConsumerPid} =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {SendSlam.ImageConsumer, []}
+      )
+
+    GenServer.call(dockerHandlerPid, :start_container)
+
     {:ok, banditPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {Bandit, plug: SendSlam.WebServer, port: 4000}
       )
 
-    {:ok, pid} = ThousandIsland.start_link(port: 1234, handler_module: Echo)
-
     # Subscribe the frame broadcaster to the camera producer to forward frames to WebSocket clients
     GenStage.sync_subscribe(frameBroadcasterPid, to: cameraProducerPid)
+    # GenStage.sync_subscribe(cameraConsumerPid, to: cameraProducerPid)
+    GenStage.sync_subscribe(imageConsumerPid, to: cameraProducerPid)
+
     {:ok, pid}
   end
 
