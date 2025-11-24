@@ -418,7 +418,6 @@ int main(int argc, char **argv)
                                         continue;
                                 }
 
-                                string calibrationContents;
                                 if (!packet.hasCalibrationParameters)
                                 {
                                         cerr << "Calibration message missing structured parameter payload." << endl;
