@@ -4,6 +4,7 @@ defmodule SendSlam.SlamHandler do
   """
   use ThousandIsland.Handler
   require Logger
+  alias Msgpax
 
   @registry SendSlam.TcpClientRegistry
 
@@ -23,14 +24,19 @@ defmodule SendSlam.SlamHandler do
       |> Map.new()
       |> Map.put(:remote_address, remote_address)
       |> Map.put(:remote_port, remote_port)
+      |> Map.put(:recv_buffer, <<>>)
 
     {:continue, state}
   end
 
   @impl ThousandIsland.Handler
   def handle_data(message, _socket, state) do
-    Logger.debug("Inbound TCP payload (#{byte_size(message)} bytes) ignored")
-    {:continue, state}
+    buffer = state.recv_buffer <> message
+    {packets, remainder} = extract_packets(buffer, [])
+
+    Enum.each(packets, &handle_incoming_packet/1)
+
+    {:continue, %{state | recv_buffer: remainder}}
   end
 
   @impl GenServer
@@ -72,4 +78,51 @@ defmodule SendSlam.SlamHandler do
     ip = address |> :inet.ntoa() |> to_string()
     "#{ip}:#{port}"
   end
+
+  defp extract_packets(buffer, acc) do
+    case buffer do
+      <<len::32-big-unsigned, rest::binary>> when byte_size(rest) >= len ->
+        <<payload::binary-size(len), remainder::binary>> = rest
+        extract_packets(remainder, [payload | acc])
+
+      _ ->
+        {Enum.reverse(acc), buffer}
+    end
+  end
+
+  defp handle_incoming_packet(payload) do
+    case Msgpax.unpack(payload, iodata: false) do
+      {:ok, %{"type" => "pose"} = packet} ->
+        log_pose_packet(packet)
+
+      {:ok, decoded} ->
+        Logger.debug("Unhandled inbound packet: #{inspect(decoded)}")
+
+      {:error, reason} ->
+        Logger.warning("Failed to decode inbound MessagePack payload: #{inspect(reason)}")
+    end
+  end
+
+  defp log_pose_packet(%{"timestamp" => ts, "camera_id" => camera_id} = packet) do
+    with %{"x" => x, "y" => y, "z" => z} <- Map.get(packet, "position") do
+      Logger.info(
+        "SLAM pose (camera #{camera_id}) @ #{format_float(ts)}s → pos: {#{format_float(x)}, #{format_float(y)}, #{format_float(z)}}"
+      )
+    else
+      _ ->
+        Logger.warning("Pose packet missing position data: #{inspect(packet)}")
+    end
+
+    :ok
+  end
+
+  defp log_pose_packet(packet) do
+    Logger.warning("Pose packet missing metadata: #{inspect(packet)}")
+  end
+
+  defp format_float(value) when is_number(value) do
+    :erlang.float_to_binary(value, decimals: 4)
+  end
+
+  defp format_float(value), do: inspect(value)
 end

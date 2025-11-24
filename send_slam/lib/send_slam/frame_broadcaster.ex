@@ -28,6 +28,12 @@ defmodule SendSlam.FrameBroadcaster do
           {:error, reason} -> Logger.warning("Failed to encode frame: #{inspect(reason)}")
         end
 
+      {:ok, frame: %Cv.Mat{} = mat, calibration: calib} ->
+        case encode_to_jpeg(mat) do
+          {:ok, bin} -> broadcast_bin(bin)
+          {:error, reason} -> Logger.warning("Failed to encode frame: #{inspect(reason)}")
+        end
+
       {:error, reason} ->
         Logger.warning("Camera frame error: #{inspect(reason)}")
 

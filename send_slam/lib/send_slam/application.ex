@@ -85,15 +85,13 @@ defmodule SendSlam.Application do
         {SendSlam.ImageConsumer, []}
       )
 
-    GenServer.call(dockerHandlerPid, :start_container)
-
     {:ok, banditPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {Bandit, plug: SendSlam.WebServer, port: 4000}
       )
 
-    # Subscribe the frame broadcaster to the camera producer to forward frames to WebSocket clients
+    GenServer.call(dockerHandlerPid, :start_container)
     GenStage.sync_subscribe(frameBroadcasterPid, to: cameraProducerPid)
     # GenStage.sync_subscribe(cameraConsumerPid, to: cameraProducerPid)
     GenStage.sync_subscribe(imageConsumerPid, to: cameraProducerPid)

@@ -114,9 +114,9 @@ defmodule SendSlam.CameraProducer do
     end
   end
 
-  def handle_info({:calibration, calib_data}, state) do
-    new_state = Keyword.put(state.opts, :calibration, calib_data)
-    {:noreply, [], new_state}
+  def handle_info({:broadcast_message, {:calibration, calib_data}}, state) do
+    new_opts = Keyword.put(state.opts, :calibration, calib_data)
+    {:noreply, [], %{state | opts: new_opts}}
   end
 
   @impl true
