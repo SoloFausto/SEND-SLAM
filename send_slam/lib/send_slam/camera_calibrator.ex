@@ -28,6 +28,9 @@ defmodule SendSlam.CameraCalibrator do
 
   require Logger
   alias Evision, as: Cv
+  alias Jason
+
+  @default_output_path Path.expand("../../priv/calibration/latest.json", __DIR__)
 
   @type frame :: Evision.Mat.t()
   @type pattern_size :: {pos_integer(), pos_integer()}
@@ -39,6 +42,47 @@ defmodule SendSlam.CameraCalibrator do
         }
 
   @doc """
+  Returns the default calibration file path (can be overridden via SEND_SLAM_CALIBRATION_FILE).
+  """
+  def default_output_path do
+    System.get_env("SEND_SLAM_CALIBRATION_FILE") || @default_output_path
+  end
+
+  @doc """
+  Persist a calibration result to disk as JSON for later reuse.
+  """
+  @spec save_to_file(calibration_result(), Path.t()) :: {:ok, Path.t()} | {:error, term()}
+  def save_to_file(calibration, path \\ default_output_path()) when is_map(calibration) do
+    with {:ok, resolved_path} <- normalize_path(path),
+         {:ok, payload} <- calibration_to_serializable(calibration),
+         {:ok, json} <- Jason.encode(payload, pretty: true),
+         :ok <- File.mkdir_p(Path.dirname(resolved_path)),
+         :ok <- File.write(resolved_path, json) do
+      {:ok, resolved_path}
+    else
+      {:error, reason} -> {:error, reason}
+      other -> {:error, other}
+    end
+  end
+
+  @doc """
+  Load a calibration result from disk.
+  """
+  @spec load_from_file(Path.t()) :: {:ok, calibration_result()} | {:error, term()}
+  def load_from_file(path \\ default_output_path()) do
+    with {:ok, resolved_path} <- normalize_path(path),
+         :ok <- ensure_exists(resolved_path),
+         {:ok, json} <- File.read(resolved_path),
+         {:ok, decoded} <- Jason.decode(json),
+         {:ok, calibration} <- calibration_from_serialized(decoded) do
+      {:ok, calibration}
+    else
+      {:error, reason} -> {:error, reason}
+      other -> {:error, other}
+    end
+  end
+
+  @doc """
   Calibrate camera from a list of frames containing checkerboard patterns.
 
   ## Parameters
@@ -47,6 +91,7 @@ defmodule SendSlam.CameraCalibrator do
   - `opts` - Keyword list of options:
     - `:pattern_size` - Tuple {width, height} of inner corners (default: {9, 6})
     - `:square_size` - Size of checkerboard square in mm (default: 25.0)
+    - `:output_path` - Destination file for persisted calibration JSON
 
   ## Returns
 
@@ -74,7 +119,25 @@ defmodule SendSlam.CameraCalibrator do
             "Successfully detected patterns in #{successful_count}/#{length(frames)} frames"
           )
 
-          perform_calibration(object_points, image_points, image_size, successful_count)
+          case perform_calibration(object_points, image_points, image_size, successful_count) do
+            {:ok, calibration} = result ->
+              persist_path = Keyword.get(opts, :output_path, default_output_path())
+
+              case save_to_file(calibration, persist_path) do
+                {:ok, written_path} ->
+                  Logger.info("Calibration persisted to #{written_path}")
+
+                {:error, reason} ->
+                  Logger.warning(
+                    "Failed to persist calibration to #{persist_path}: #{inspect(reason)}"
+                  )
+              end
+
+              result
+
+            other ->
+              other
+          end
         end
 
       {:error, reason} ->
@@ -244,4 +307,94 @@ defmodule SendSlam.CameraCalibrator do
     Logger.info("Calibration successful! RMS error: #{rms_error}")
     {:ok, calibration}
   end
+
+  defp normalize_path(path) when is_binary(path) and path != "" do
+    {:ok, Path.expand(path)}
+  end
+
+  defp normalize_path(_), do: {:error, :invalid_path}
+
+  defp ensure_exists(path) do
+    if File.exists?(path), do: :ok, else: {:error, :enoent}
+  end
+
+  defp calibration_to_serializable(%{
+         camera_matrix: camera_matrix,
+         distortion_coeffs: distortion_coeffs,
+         reprojection_error: reprojection_error,
+         successful_frames: successful_frames
+       }) do
+    with {:ok, camera_payload} <- serialize_mat(camera_matrix),
+         {:ok, distortion_payload} <- serialize_mat(distortion_coeffs) do
+      {:ok,
+       %{
+         "camera_matrix" => camera_payload,
+         "distortion_coeffs" => distortion_payload,
+         "reprojection_error" => reprojection_error,
+         "successful_frames" => successful_frames
+       }}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp calibration_to_serializable(_), do: {:error, :invalid_calibration}
+
+  defp calibration_from_serialized(%{
+         "camera_matrix" => camera_matrix,
+         "distortion_coeffs" => distortion_coeffs,
+         "reprojection_error" => reprojection_error,
+         "successful_frames" => successful_frames
+       }) do
+    with {:ok, camera_mat} <- deserialize_mat(camera_matrix),
+         {:ok, distortion_mat} <- deserialize_mat(distortion_coeffs) do
+      {:ok,
+       %{
+         camera_matrix: camera_mat,
+         distortion_coeffs: distortion_mat,
+         reprojection_error: reprojection_error * 1.0,
+         successful_frames: successful_frames |> round()
+       }}
+    else
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp calibration_from_serialized(_), do: {:error, :invalid_calibration_payload}
+
+  defp serialize_mat(%Cv.Mat{} = mat) do
+    tensor =
+      mat
+      |> Cv.Mat.to_nx()
+      |> Nx.as_type({:f, 64})
+
+    {:ok,
+     %{
+       "shape" => tensor |> Nx.shape() |> Tuple.to_list(),
+       "data" => Nx.to_flat_list(tensor)
+     }}
+  rescue
+    e -> {:error, {:serialize_mat_failed, e}}
+  end
+
+  defp serialize_mat(_), do: {:error, :invalid_mat}
+
+  defp deserialize_mat(%{"shape" => shape, "data" => data})
+       when is_list(shape) and is_list(data) do
+    tensor_shape =
+      shape
+      |> Enum.map(&round/1)
+      |> List.to_tuple()
+
+    tensor =
+      data
+      |> Nx.tensor(type: {:f, 64})
+      |> Nx.reshape(tensor_shape)
+
+    {:ok, Cv.Mat.from_nx(tensor)}
+  rescue
+    e -> {:error, {:deserialize_mat_failed, e}}
+  end
+
+  defp deserialize_mat(_), do: {:error, :invalid_serialized_mat}
 end

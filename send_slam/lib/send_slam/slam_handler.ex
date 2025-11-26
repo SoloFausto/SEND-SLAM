@@ -5,8 +5,11 @@ defmodule SendSlam.SlamHandler do
   use ThousandIsland.Handler
   require Logger
   alias Msgpax
+  alias SendSlam.CalibrationCache
 
-  @registry SendSlam.TcpClientRegistry
+  @backend_registry SendSlam.BackendRegistry
+  @pose_registry SendSlam.PoseRegistry
+  @calibration_registry SendSlam.CalibrationRegistry
 
   def send_message(pid, msg) when is_binary(msg) do
     GenServer.cast(pid, {:send, msg})
@@ -15,7 +18,8 @@ defmodule SendSlam.SlamHandler do
   @impl ThousandIsland.Handler
   def handle_connection(socket, handler_opts) do
     {:ok, {remote_address, remote_port}} = ThousandIsland.Socket.peername(socket)
-    {:ok, _} = Registry.register(@registry, :clients, %{})
+    {:ok, _} = Registry.register(@backend_registry, :clients, %{})
+    {:ok, _} = Registry.register(@calibration_registry, :clients, %{})
     info = format_remote(remote_address, remote_port)
     Logger.info("TCP client connected: #{info}")
 
@@ -25,6 +29,9 @@ defmodule SendSlam.SlamHandler do
       |> Map.put(:remote_address, remote_address)
       |> Map.put(:remote_port, remote_port)
       |> Map.put(:recv_buffer, <<>>)
+      |> Map.put(:last_calibration_digest, nil)
+
+    state = maybe_send_cached_calibration(socket, state)
 
     {:continue, state}
   end
@@ -93,7 +100,8 @@ defmodule SendSlam.SlamHandler do
   defp handle_incoming_packet(payload) do
     case Msgpax.unpack(payload, iodata: false) do
       {:ok, %{"type" => "pose"} = packet} ->
-        log_pose_packet(packet)
+        broadcast_pose_packet(packet)
+        # log_pose_packet(packet)
 
       {:ok, decoded} ->
         Logger.debug("Unhandled inbound packet: #{inspect(decoded)}")
@@ -118,6 +126,41 @@ defmodule SendSlam.SlamHandler do
 
   defp log_pose_packet(packet) do
     Logger.warning("Pose packet missing metadata: #{inspect(packet)}")
+  end
+
+  defp broadcast_pose_packet(packet) when is_map(packet) do
+    Registry.dispatch(@pose_registry, :clients, fn entries ->
+      for {pid, _} <- entries do
+        Logger.debug("Broadcasting pose packet to #{inspect(pid)}")
+        send(pid, {:broadcast_pose, packet})
+      end
+    end)
+
+    :ok
+  end
+
+  defp maybe_send_cached_calibration(socket, state) do
+    case CalibrationCache.get() do
+      {:ok, {packet, digest}} ->
+        case ThousandIsland.Socket.send(socket, packet) do
+          :ok ->
+            Map.put(state, :last_calibration_digest, digest)
+
+          {:error, reason} ->
+            Logger.warning(
+              "Failed to push cached calibration to #{format_remote(state.remote_address, state.remote_port)}: #{inspect(reason)}"
+            )
+
+            state
+        end
+
+      :error ->
+        state
+
+      {:error, reason} ->
+        Logger.debug("Calibration cache unavailable: #{inspect(reason)}")
+        state
+    end
   end
 
   defp format_float(value) when is_number(value) do

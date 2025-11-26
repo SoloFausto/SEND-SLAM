@@ -1,33 +1,39 @@
 defmodule SendSlam.ImageConsumer do
   @moduledoc """
-  A simple GenStage consumer that logs basic info about frames received.
-
-  Not started by default; you can start it manually in IEx:
-
-      {:ok, _} = GenStage.start_link(SendSlam.ImageConsumer, subscribe_to: [SendSlam.CameraProducer])
+  GenServer that listens for `{:camera_frame, event}` messages broadcast via
+  `SendSlam.CameraRegistry`, serializes them to MessagePack, and forwards them to
+  every backend registered in `SendSlam.BackendRegistry`.
   """
 
-  use GenStage
+  use GenServer
   require Logger
   alias Evision, as: Cv
   alias Msgpax
   alias Nx
+  alias SendSlam.CalibrationCache
 
-  @registry SendSlam.TcpClientRegistry
+  @registry SendSlam.BackendRegistry
 
-  def start_link(_opts) do
-    GenStage.start_link(__MODULE__, :ok)
+  @camera_registry SendSlam.CameraRegistry
+
+  def start_link(opts \\ []) do
+    GenServer.start_link(__MODULE__, opts, name: Keyword.get(opts, :name, __MODULE__))
   end
 
   @impl true
-  def init(:ok) do
-    {:consumer, %{last_calibration_digest: nil}}
+  def init(_opts) do
+    _ = Registry.register(@camera_registry, :clients, %{})
+    {:ok, %{last_calibration_digest: nil}}
   end
 
   @impl true
-  def handle_events(events, _from, state) do
-    state = Enum.reduce(events, state, &process_event/2)
-    {:noreply, [], state}
+  def handle_info({:camera_frame, event}, state) do
+    {:noreply, process_event(event, state)}
+  end
+
+  def handle_info(other, state) do
+    Logger.debug("ImageConsumer ignoring message: #{inspect(other)}")
+    {:noreply, state}
   end
 
   defp process_event({:ok, opts}, state) when is_list(opts) do
@@ -88,6 +94,7 @@ defmodule SendSlam.ImageConsumer do
             if state.last_calibration_digest == digest do
               state
             else
+              cache_calibration(packet, digest)
               broadcast_packet(packet)
               %{state | last_calibration_digest: digest}
             end
@@ -227,6 +234,10 @@ defmodule SendSlam.ImageConsumer do
         send(pid, {:msgpack_frame, packet})
       end
     end)
+  end
+
+  defp cache_calibration(packet, digest) do
+    CalibrationCache.put(packet, digest)
   end
 
   defp to_float(value) when is_number(value), do: value * 1.0

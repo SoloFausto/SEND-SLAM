@@ -18,9 +18,14 @@ defmodule SendSlam.WebServer do
     end
   end
 
-  get "/ws" do
+  get "/panel" do
     conn
     |> WebSockAdapter.upgrade(SendSlam.WebSocketHandler, [], timeout: 60_000)
+  end
+
+  get "/client" do
+    conn
+    |> WebSockAdapter.upgrade(SendSlam.ClientApplicationServer, [], timeout: 60_000)
   end
 
   match _ do

@@ -4,17 +4,98 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>SEND-SLAM Camera Stream</title>
+    <style>
+        body {
+            font-family: sans-serif;
+            margin: 0;
+            background: #0f172a;
+            color: #e2e8f0;
+        }
 
-    <script>
-        
+        .wrap {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            flex-wrap: wrap;
+        }
+
+        .card {
+            background: #1e293b;
+            padding: 1rem;
+            border-radius: 0.75rem;
+            box-shadow: 0 10px 35px rgba(15, 23, 42, 0.7);
+        }
+
+        #viz-container canvas {
+            display: block;
+        }
+
+        button {
+            background: #3b82f6;
+            border: none;
+            border-radius: 0.5rem;
+            padding: 0.5rem 1rem;
+            color: #fff;
+            font-size: 1rem;
+            cursor: pointer;
+        }
+
+        .status.ok {
+            color: #34d399;
+        }
+
+        .status.err {
+            color: #f87171;
+        }
+
+        #pose-readout {
+            font-family: "JetBrains Mono", Menlo, monospace;
+        }
+    </style>
+    <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.181.2/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.181.2/examples/jsm/"
+      }
+    }
+    </script>
+</head>
+<body>
+
+    <div class="wrap">
+        <div class="card">
+            <img id="frame" alt="Live camera frame" />
+            <div>WebSocket: <span id="status" class="status">connecting…</span></div>
+            <div>Pose WebSocket: <span id="pose-status" class="status">connecting…</span></div>
+            <div>FPS: <span id="fps">0</span></div>
+            <div><span id="last-frame" class="last-frame"></span></div>
+            <div>Captured Frames: <span id="captured-frames"></span></div>
+            <button id="capture">Capture</button>
+        </div>
+        <div class="card" style="min-width: 360px; flex: 1;">
+            <div id="viz-container"></div>
+            <div style="margin-top: 0.75rem;">
+                Pose: <span id="pose-readout">x: 0.000  y: 0.000  z: 0.000</span>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+
         document.addEventListener('DOMContentLoaded', () => {
             const img = document.getElementById('frame');
             const statusEl = document.getElementById('status');
+            const poseStatusEl = document.getElementById('pose-status');
             const fpsEl = document.getElementById('fps');
             const capturedFramesEl = document.getElementById('captured-frames');
             const wsProto = (location.protocol === 'https:') ? 'wss://' : 'ws://';
-            const wsUrl = wsProto + location.host + '/ws';
+            const wsUrl = wsProto + location.host + '/panel';
             const ws = new WebSocket(wsUrl);
+            const poseWsUrl = wsProto + location.host +'/client';
             const maxCapturedFrames = 10;
             const blobToBase64 = blob => {
                 const reader = new FileReader();
@@ -34,19 +115,198 @@
             let capturedFrames = [];
             let lastFpsAt = performance.now();
 
+            // --- Simple Three.js scene setup ---
+            const vizContainer = document.getElementById('viz-container');
+            const scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x020617);
+
+            const camera = new THREE.PerspectiveCamera(60, 1, 0.1, 1000);
+            camera.position.set(0, 2, 5);
+
+            const cameraOffset = new THREE.Vector3(0, 1.5, 3.5);
+            const cameraTarget = new THREE.Vector3();
+            const cameraDesired = new THREE.Vector3();
+
+            const renderer = new THREE.WebGLRenderer({ antialias: true });
+            const resizeViz = () => {
+                const width = vizContainer.clientWidth;
+                const height = 400;
+                renderer.setSize(width, height);
+                camera.aspect = width / height;
+                camera.updateProjectionMatrix();
+            };
+            vizContainer.appendChild(renderer.domElement);
+            resizeViz();
+            window.addEventListener('resize', resizeViz);
+
+            const grid = new THREE.GridHelper(10, 10, 0x334155, 0x1e293b);
+            scene.add(grid);
+
+            const axes = new THREE.AxesHelper(2);
+            scene.add(axes);
+
+            const sphereGeometry = new THREE.SphereGeometry(0.15, 32, 32);
+            const sphereMaterial = new THREE.MeshStandardMaterial({ color: 0xf97316 });
+            const poseSphere = new THREE.Mesh(sphereGeometry, sphereMaterial);
+            scene.add(poseSphere);
+
+            const trailLength = 300;
+            const trailGeometry = new THREE.BufferGeometry();
+            trailGeometry.setAttribute('position', new THREE.BufferAttribute(new Float32Array(trailLength * 3), 3));
+            trailGeometry.setDrawRange(0, 0);
+            const trailMaterial = new THREE.LineBasicMaterial({ color: 0x38bdf8, transparent: true, opacity: 0.85 });
+            const trailLine = new THREE.Line(trailGeometry, trailMaterial);
+            scene.add(trailLine);
+            const trailPoints = [];
+
+            const ambient = new THREE.AmbientLight(0xffffff, 0.6);
+            const directional = new THREE.DirectionalLight(0xffffff, 0.6);
+            directional.position.set(3, 5, 2);
+            scene.add(ambient, directional);
+
+            const renderLoop = () => {
+                requestAnimationFrame(renderLoop);
+                renderer.render(scene, camera);
+            };
+            renderLoop();
+
+            const poseVector = new THREE.Vector3();
+
+            const updateTrail = (position) => {
+                if (!position) {
+                    return;
+                }
+
+                trailPoints.push(position.clone());
+                if (trailPoints.length > trailLength) {
+                    trailPoints.shift();
+                }
+
+                const attr = trailGeometry.getAttribute('position');
+                const array = attr.array;
+                for (let i = 0; i < trailPoints.length; i++) {
+                    const pt = trailPoints[i];
+                    array[i * 3] = pt.x;
+                    array[i * 3 + 1] = pt.y;
+                    array[i * 3 + 2] = pt.z;
+                }
+
+                trailGeometry.setDrawRange(0, trailPoints.length);
+                attr.needsUpdate = true;
+            };
+
+            const updatePoseViz = (pose) => {
+                const pos = pose?.position;
+                if (!pos) {
+                    return;
+                }
+
+                const scale = 5.0; // tweak if coordinates are too small/large
+                poseVector.set(
+                    parseFloat(pos.x || 0) * scale,
+                    parseFloat(pos.y || 0) * scale * -1,
+                    parseFloat(pos.z || 0) * scale
+                );
+
+                poseSphere.position.copy(poseVector);
+                updateTrail(poseSphere.position);
+
+                cameraDesired.copy(poseSphere.position).add(cameraOffset);
+                camera.position.lerp(cameraDesired, 0.08);
+                cameraTarget.copy(poseSphere.position);
+                camera.lookAt(cameraTarget);
+
+                const readout = document.getElementById('pose-readout');
+                if (readout) {
+                    readout.textContent = `x: ${formatNumber(pos.x)}  y: ${formatNumber(pos.y)}  z: ${formatNumber(pos.z)}`;
+                }
+            };
+
+            const formatNumber = (value) => {
+                const num = Number(value);
+                return Number.isFinite(num) ? num.toFixed(3) : 'n/a';
+            };
+
             function setStatus(text, cls) {
                 statusEl.textContent = text;
                 statusEl.className = 'status ' + (cls || '');
             }
 
+            function setPoseStatus(text, cls) {
+                if (!poseStatusEl) {
+                    return;
+                }
+
+                poseStatusEl.textContent = text;
+                poseStatusEl.className = 'status ' + (cls || '');
+            }
+
+            function normalizePath(path) {
+                if (!path) {
+                    return '/ws';
+                }
+
+                return path.startsWith('/') ? path : `/${path}`;
+            }
+
+            function deriveDefaultPosePort() {
+                const current = Number(window.location.port);
+                if (Number.isFinite(current) && current > 0) {
+                    return String(current + 1);
+                }
+
+                return '4001';
+            }
+
+
+            function connectPoseSocket(url) {
+                if (!window.WebSocket) {
+                    setPoseStatus('unsupported', 'err');
+                    return null;
+                }
+
+                setPoseStatus('connecting…');
+
+                try {
+                    const socket = new WebSocket(url);
+
+                    socket.addEventListener('open', () => setPoseStatus('connected', 'ok'));
+                    socket.addEventListener('close', () => setPoseStatus('disconnected', 'err'));
+                    socket.addEventListener('error', (evt) => {
+                        console.error('Pose socket error', evt);
+                        setPoseStatus('error', 'err');
+                    });
+                    socket.addEventListener('message', (evt) => {
+                        if (typeof evt.data !== 'string') {
+                            return;
+                        }
+
+                        try {
+                            const message = JSON.parse(evt.data);
+                            if (message?.type === 'pose') {
+                                updatePoseViz(message.payload);
+                            }
+                        } catch (err) {
+                            console.warn('Invalid pose payload', err);
+                        }
+                    });
+
+                    return socket;
+                } catch (err) {
+                    console.error('Failed to open pose socket', err);
+                    setPoseStatus('error', 'err');
+                    return null;
+                }
+            }
+
             ws.addEventListener('open', () => setStatus('connected', 'ok'));
             ws.addEventListener('close', () => setStatus('disconnected', 'err'));
             ws.addEventListener('error', () => setStatus('error', 'err'));
+            connectPoseSocket(poseWsUrl);
             const captureBtn = document.getElementById('capture');
             captureBtn.addEventListener('click', () => {
                 blobToBase64(imgBlob).then(base64 => {
-                    currentCapturedFrame = base64;
-                    capturedFrames.push(currentCapturedFrame);
+                    capturedFrames.push(base64);
                      if (capturedFrames.length >= maxCapturedFrames) {
                         if (ws.readyState === WebSocket.OPEN) {
                             console.log('Sending calibration frames to server:', capturedFrames);
@@ -64,7 +324,16 @@
                     } else if (evt.data == "ERROR") {
                         setStatus('Calibration error', 'err');
                     } else {
-                        console.log('Received text message from server:', evt.data);
+                        try {
+                            const message = JSON.parse(evt.data);
+                            if (message?.type === 'pose') {
+                                updatePoseViz(message.payload);
+                            } else {
+                                console.log('Received text message from server:', evt.data);
+                            }
+                        } catch (err) {
+                            console.log('Received text message from server:', evt.data);
+                        }
                     }
                 }
                 else{
@@ -89,17 +358,5 @@
             });
         });
     </script>
-</head>
-<body>
-    <div class="wrap">
-        <div class="card">
-            <img id="frame" alt="Live camera frame" />
-            <div>WebSocket: <span id="status" class="status">connecting…</span></div>
-            <div>FPS: <span id="fps">0</span></div>
-            <div><span id="status" class="last-frame"></span></div>
-            <div>Captured Frames: <span id="captured-frames"></span></div>
-            <button id="capture">Capture</button>
-        </div>
-    </div>
 </body>
 </html>

@@ -9,12 +9,16 @@ defmodule SendSlam.WebSocketHandler do
     # Register this connection for broadcasting under a shared topic
     _ = Registry.register(SendSlam.WebSocketRegistry, :clients, %{})
     _ = Registry.register(SendSlam.CalibrationRegistry, :clients, %{})
-    {:push, {:text, "Hello World! WebSocket connection established."}, %{}}
+    _ = Registry.register(SendSlam.CameraRegistry, :clients, %{})
+    {:push, {:text, ""}, %{}}
   end
 
   # Receive broadcasted frames and push to this socket
-  def handle_info({:broadcast_frame, data}, state) do
-    {:push, {:binary, data}, state}
+  def handle_info({:camera_frame, {:ok, data}}, state) do
+    with {:ok, frame} <- Keyword.fetch(data,:frame) do
+      frame_binary = Cv.imencode(".jpeg", frame)
+      {:push, {:binary, frame_binary}, state}
+    end
   end
 
   def handle_in(message, state) do
