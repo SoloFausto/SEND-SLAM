@@ -1,4 +1,5 @@
 defmodule SendSlam.WebSocketHandler do
+  # Handles WebSocket connections for SEND-SLAM camera calibration and frame streaming.
   @behaviour WebSock
   require Logger
   require SendSlam.CameraCalibrator

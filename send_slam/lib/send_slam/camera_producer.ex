@@ -99,6 +99,8 @@ defmodule SendSlam.CameraProducer do
     fps = Keyword.fetch!(opts, :fps)
 
     with {:ok, cap} <- ensure_videocap(index),
+         fourcc <- Evision.VideoWriter.fourcc(?M, ?J, ?P, ?G),
+         true <- VC.set(cap, VCP.cv_CAP_PROP_FOURCC(), fourcc) || true,
          true <- VC.set(cap, VCP.cv_CAP_PROP_FRAME_WIDTH(), width) || true,
          true <- VC.set(cap, VCP.cv_CAP_PROP_FRAME_HEIGHT(), height) || true,
          true <- VC.set(cap, VCP.cv_CAP_PROP_FPS(), fps) || true do

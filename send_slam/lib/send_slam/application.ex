@@ -49,10 +49,10 @@ defmodule SendSlam.Application do
         {SendSlam.CameraProducer,
          [
            device_index: 4,
-           width: 640,
-           height: 480,
+           width: 1280,
+           height: 800,
            fps: 30,
-           buffer_size: 10,
+           buffer_size: 0,
            calibration_file: CameraCalibrator.default_output_path()
          ]}
       )
