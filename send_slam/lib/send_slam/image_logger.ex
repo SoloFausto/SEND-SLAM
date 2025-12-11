@@ -39,8 +39,8 @@ defmodule SendSlam.ImageConsumer do
   defp process_event({:ok, opts}, state) when is_list(opts) do
     with {:ok, %Cv.Mat{} = mat} <- Keyword.fetch(opts, :frame),
          {:ok, dims} <- dimensions(mat),
-         {:ok, jpeg} <- encode_to_jpeg(mat),
-         {:ok, frame_packet} <- build_frame_packet(jpeg, dims, opts) do
+         {:ok, ppm} <- encode_to_ppm(mat, dims),
+         {:ok, frame_packet} <- build_frame_packet(ppm, dims, opts) do
       state = maybe_send_calibration(opts, dims, state)
       broadcast_packet(frame_packet)
       state
@@ -65,19 +65,19 @@ defmodule SendSlam.ImageConsumer do
     state
   end
 
-  defp build_frame_packet(jpeg, dims, opts) when is_binary(jpeg) do
+  defp build_frame_packet(ppm, dims, opts) when is_binary(ppm) do
     camera_id = Keyword.get(opts, :camera_id, 1)
     timestamp = Keyword.get(opts, :timestamp, monotonic_seconds())
 
     payload = %{
       type: "frame",
       camera_id: camera_id,
-      encoding: "jpeg",
+      encoding: "ppm",
       timestamp: timestamp,
       width: dims.width,
       height: dims.height,
       channels: dims.channels,
-      frame: Msgpax.Bin.new(jpeg)
+      frame: Msgpax.Bin.new(ppm)
     }
 
     encode_payload(payload)
@@ -212,11 +212,13 @@ defmodule SendSlam.ImageConsumer do
     System.monotonic_time(:nanosecond) / 1_000_000_000
   end
 
-  defp encode_to_jpeg(%Cv.Mat{} = mat) do
+  defp encode_to_ppm(%Cv.Mat{} = mat, dims) do
     try do
-      {:ok, Cv.imencode(".jpg", mat)}
+      # Ensure 3-channel RGB/BGR → convert to 3-channel BGR if needed
+
+      {:ok, Cv.imencode(".ppm", mat)}
     rescue
-      e -> {:error, {:jpeg_encode_failed, e}}
+      e -> {:error, {:ppm_encode_failed, e}}
     end
   end
 

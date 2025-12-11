@@ -11,7 +11,7 @@ defmodule SendSlam.WebSocketHandler do
     _ = Registry.register(SendSlam.WebSocketRegistry, :clients, %{})
     _ = Registry.register(SendSlam.CalibrationRegistry, :clients, %{})
     _ = Registry.register(SendSlam.CameraRegistry, :clients, %{})
-    {:push, {:text, ""}, %{}}
+    {:push, {:text, "My PID is #{inspect(self())}"}, %{}}
   end
 
   # Receive broadcasted frames and push to this socket

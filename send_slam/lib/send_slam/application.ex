@@ -43,7 +43,7 @@ defmodule SendSlam.Application do
         {Registry, keys: :duplicate, name: SendSlam.CameraRegistry}
       )
 
-    {:ok, _camera_producer_pid} =
+    {:ok, camera_producer_pid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {SendSlam.CameraProducer,
@@ -51,17 +51,17 @@ defmodule SendSlam.Application do
            device_index: 4,
            width: 1280,
            height: 800,
-           fps: 30,
+           fps: 120,
            buffer_size: 0,
            calibration_file: CameraCalibrator.default_output_path()
          ]}
       )
 
-    # {:ok, cameraConsumerPid} =
-    #   DynamicSupervisor.start_child(
-    #     SendSlam.Supervisor,
-    #     {SendSlam.ExampleConsumer, []}
-    #   )
+    {:ok, cameraConsumerPid} =
+      DynamicSupervisor.start_child(
+        SendSlam.Supervisor,
+        {SendSlam.ImageTimer, []}
+      )
 
     {:ok, pid} = ThousandIsland.start_link(port: 5000, handler_module: SendSlam.SlamHandler)
 
@@ -82,25 +82,25 @@ defmodule SendSlam.Application do
       )
 
 
-    {:ok, _image_consumer_pid} =
+    {:ok, image_consumer_pid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {SendSlam.ImageConsumer, []}
       )
 
-    {:ok, _banditPid} =
+    {:ok, banditPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {Bandit, plug: SendSlam.WebServer, port: 4000}
       )
 
-    {:ok, _pose_bandit_pid} =
-      DynamicSupervisor.start_child(
-        SendSlam.Supervisor,
-        {Bandit, plug: SendSlam.PoseWebServer, port: 4001}
-      )
+    # {:ok, _pose_bandit_pid} =
+    #   DynamicSupervisor.start_child(
+    #     SendSlam.Supervisor,
+    #     {Bandit, plug: SendSlam.PoseWebServer, port: 4001}
+    #   )
 
-    GenServer.call(dockerHandlerPid, :start_container)
+    # GenServer.call(dockerHandlerPid, :start_container)
 
     {:ok, pid}
   end

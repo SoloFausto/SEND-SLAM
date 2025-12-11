@@ -249,15 +249,6 @@
                 return path.startsWith('/') ? path : `/${path}`;
             }
 
-            function deriveDefaultPosePort() {
-                const current = Number(window.location.port);
-                if (Number.isFinite(current) && current > 0) {
-                    return String(current + 1);
-                }
-
-                return '4001';
-            }
-
 
             function connectPoseSocket(url) {
                 if (!window.WebSocket) {
@@ -345,15 +336,15 @@
                     lastUrl = url;
 
                     // Simple FPS counter
-                    frames++;
-                    const now = performance.now();
-                    if (now - lastFpsAt >= 1000) {
-                        fpsEl.textContent = frames.toString();
-                        frames = 0;
-                        lastFpsAt = now;
-                    }
-                }
 
+                }
+                frames++;
+                const now = performance.now();
+                if (now - lastFpsAt >= 1000) {
+                    fpsEl.textContent = frames.toString();
+                    frames = 0;
+                    lastFpsAt = now;
+                }
 
             });
         });

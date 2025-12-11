@@ -16,6 +16,7 @@ defmodule SendSlam.CameraProducer do
 
   use GenServer
   require Logger
+  use Bitwise
 
   alias Evision.VideoCapture, as: VC
   alias Evision.VideoCaptureProperties, as: VCP
@@ -50,27 +51,28 @@ defmodule SendSlam.CameraProducer do
   @impl true
   def init(opts) do
     _ = Registry.register(@calibration_registry, :clients, %{})
-
-    fps = Keyword.get(opts, :fps, 30)
-    interval_ms = max(1, div(1000, max(1, fps)))
     opts = maybe_attach_calibration(opts)
 
 
     state =
-      %{cap: nil, opts: opts, interval_ms: interval_ms, calibration: Keyword.get(opts, :calibration)}
+      %{cap: nil, reader_pid: nil, opts: opts, calibration: Keyword.get(opts, :calibration)}
       |> maybe_open_camera()
+      |> ensure_reader()
 
-    {:ok, schedule_tick(state)}
+    {:ok, state}
   end
 
   @impl true
-  def handle_info(:tick, state) do
-    state =
-      state
-      |> maybe_open_camera()
-      |> capture_and_broadcast()
+  def handle_info({:camera_frame_read, %Evision.Mat{} = mat}, state) do
+    broadcast_camera_frame(mat, state)
+    {:noreply, state}
+  end
 
-    {:noreply, schedule_tick(state)}
+  @impl true
+  def handle_info({:camera_reader_error, reason}, state) do
+    Logger.warning("CameraProducer reader error: #{inspect(reason)}; attempting reopen")
+    state = state |> stop_reader() |> release_and_nil_cap() |> maybe_open_camera() |> ensure_reader()
+    {:noreply, state}
   end
 
   def handle_info({:broadcast_message, {:calibration, calib_data}}, state) do
@@ -85,8 +87,9 @@ defmodule SendSlam.CameraProducer do
   end
 
   @impl true
-  def terminate(_reason, %{cap: cap}) do
-    release_camera(cap)
+  def terminate(_reason, state) do
+    _ = stop_reader(state)
+    release_camera(state.cap)
     :ok
   end
 
@@ -98,16 +101,19 @@ defmodule SendSlam.CameraProducer do
     height = Keyword.fetch!(opts, :height)
     fps = Keyword.fetch!(opts, :fps)
 
-    with {:ok, cap} <- ensure_videocap(index),
-         fourcc <- Evision.VideoWriter.fourcc(?M, ?J, ?P, ?G),
-         true <- VC.set(cap, VCP.cv_CAP_PROP_FOURCC(), fourcc) || true,
-         true <- VC.set(cap, VCP.cv_CAP_PROP_FRAME_WIDTH(), width) || true,
-         true <- VC.set(cap, VCP.cv_CAP_PROP_FRAME_HEIGHT(), height) || true,
-         true <- VC.set(cap, VCP.cv_CAP_PROP_FPS(), fps) || true do
-      {:ok, cap}
-    else
+    case ensure_videocap(index) do
+      {:ok, cap} ->
+        fourcc = Evision.VideoWriter.fourcc(?M, ?J, ?P, ?G)
+
+        _ = set_prop(cap, VCP.cv_CAP_PROP_FOURCC(), fourcc, "FOURCC")
+        _ = set_prop(cap, VCP.cv_CAP_PROP_FRAME_WIDTH(), width, "WIDTH")
+        _ = set_prop(cap, VCP.cv_CAP_PROP_FRAME_HEIGHT(), height, "HEIGHT")
+        _ = set_prop(cap, VCP.cv_CAP_PROP_FPS(), fps, "FPS")
+
+        log_camera_properties(index, cap)
+        {:ok, cap}
+
       {:error, _} = err -> err
-      false -> {:error, :set_property_failed}
     end
   end
 
@@ -133,11 +139,6 @@ defmodule SendSlam.CameraProducer do
     end
   end
 
-  defp schedule_tick(state) do
-    Process.send_after(self(), :tick, state.interval_ms)
-    state
-  end
-
   defp maybe_open_camera(%{cap: %VC{}} = state), do: state
 
   defp maybe_open_camera(%{opts: opts} = state) do
@@ -149,23 +150,40 @@ defmodule SendSlam.CameraProducer do
     end
   end
 
-  defp capture_and_broadcast(%{cap: nil} = state), do: state
+  # Reader management
+  defp ensure_reader(%{cap: %VC{} = cap, reader_pid: pid} = state) do
+    cond do
+      is_pid(pid) and Process.alive?(pid) -> state
+      true ->
+        reader = start_reader(self(), cap)
+        %{state | reader_pid: reader}
+    end
+  end
+  defp ensure_reader(state), do: state
 
-  defp capture_and_broadcast(%{cap: cap} = state) do
+  defp start_reader(server, cap) do
+    spawn_link(fn -> reader_loop(server, cap) end)
+  end
+
+  defp stop_reader(%{reader_pid: pid} = state) when is_pid(pid) do
+    if Process.alive?(pid), do: Process.exit(pid, :kill)
+    %{state | reader_pid: nil}
+  end
+  defp stop_reader(state), do: state
+
+  defp reader_loop(server, cap) do
     case VC.read(cap) do
       %Evision.Mat{} = mat ->
-        broadcast_camera_frame(mat, state)
-        state
-
+        send(server, {:camera_frame_read, mat})
+        reader_loop(server, cap)
       false ->
-        Logger.warning("CameraProducer: camera feed ended; reopening soon")
-        release_camera(cap)
-        %{state | cap: nil}
-
+        send(server, {:camera_reader_error, :eof})
+        Process.sleep(50)
+        reader_loop(server, cap)
       {:error, reason} ->
-        Logger.error("CameraProducer: read failed #{inspect(reason)}")
-        release_camera(cap)
-        %{state | cap: nil}
+        send(server, {:camera_reader_error, reason})
+        Process.sleep(200)
+        reader_loop(server, cap)
     end
   end
 
@@ -191,6 +209,38 @@ defmodule SendSlam.CameraProducer do
 
   defp release_camera(%VC{} = cap), do: VC.release(cap)
   defp release_camera(_), do: :ok
+
+  defp release_and_nil_cap(%{cap: cap} = state) do
+    release_camera(cap)
+    %{state | cap: nil}
+  end
+
+  defp set_prop(cap, prop, value, name) do
+    case VC.set(cap, prop, value) do
+      true -> true
+      false ->
+        Logger.warning("CameraProducer: failed to set #{name} to #{inspect(value)}")
+        false
+    end
+  end
+
+  defp log_camera_properties(index, cap) do
+    actual_w = VC.get(cap, VCP.cv_CAP_PROP_FRAME_WIDTH())
+    actual_h = VC.get(cap, VCP.cv_CAP_PROP_FRAME_HEIGHT())
+    actual_fps = VC.get(cap, VCP.cv_CAP_PROP_FPS())
+    code = VC.get(cap, VCP.cv_CAP_PROP_FOURCC())
+    fourcc = fourcc_to_string(code)
+
+    Logger.info(
+      "CameraProducer: opened index=#{index} #{trunc(actual_w)}x#{trunc(actual_h)} @ #{Float.round(actual_fps * 1.0, 2)} fps, fourcc=#{fourcc} (#{trunc(code)})"
+    )
+  end
+
+  defp fourcc_to_string(code) when is_number(code) do
+    c = trunc(code)
+    << (c &&& 0xFF)::8, ((c >>> 8) &&& 0xFF)::8, ((c >>> 16) &&& 0xFF)::8, ((c >>> 24) &&& 0xFF)::8 >>
+  end
+  defp fourcc_to_string(_), do: "????"
 
   defp maybe_attach_calibration(opts) do
     case {Keyword.get(opts, :calibration), Keyword.get(opts, :calibration_file)} do
