@@ -51,17 +51,29 @@ defmodule SendSlam.Application do
            device_index: 4,
            width: 1280,
            height: 800,
-           fps: 120,
+           fps: 30,
            buffer_size: 0,
            calibration_file: CameraCalibrator.default_output_path()
          ]}
       )
 
-    {:ok, cameraConsumerPid} =
-      DynamicSupervisor.start_child(
-        SendSlam.Supervisor,
-        {SendSlam.ImageTimer, []}
-      )
+    # DynamicSupervisor.start_child(
+    #   SendSlam.Supervisor,
+    #   {SendSlam.VideoProducer,
+    #    [
+    #     video_path: "/home/faus/Code/SEND-SLAM/slam_test_mjpg.avi",
+    #     fps: 30,
+    #     loop: true,
+    #     warmup_ms: 20000
+    #     ]
+    #   }
+    # )
+
+    # {:ok, cameraConsumerPid} =
+    #   DynamicSupervisor.start_child(
+    #     SendSlam.Supervisor,
+    #     {SendSlam.ImageTimer, []}
+    #   )
 
     {:ok, pid} = ThousandIsland.start_link(port: 5000, handler_module: SendSlam.SlamHandler)
 
@@ -100,7 +112,7 @@ defmodule SendSlam.Application do
     #     {Bandit, plug: SendSlam.PoseWebServer, port: 4001}
     #   )
 
-    # GenServer.call(dockerHandlerPid, :start_container)
+    GenServer.call(dockerHandlerPid, :start_container)
 
     {:ok, pid}
   end
