@@ -3,7 +3,7 @@
 
 SEND-SLAM is a SLAM Framework that lets you add your own cameras and easily run a SLAM algorithm with those cameras.
 The current supported configuration is ORB-SLAM 3 in a docker container with one single mono camera as the input.
-The system is currently in a proof of concept status, mainly being done in the span of a semester as an independent research project for a class.
+The system is currently in a proof of concept status, mainly being done in the span of a semester as an independent research project for COSC 482.
 
 ## Setup Instructions (intended for Linux primarly)
 1. Install both Elixir and Docker to your system
