@@ -1,4 +1,5 @@
 10 minute presentation
+SEND-SLAM: Democratizing the access to Simultaneous Location And Mapping algorithms
 
 1. SLAM: what is it?
 2. What is the current state of SLAM?

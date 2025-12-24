@@ -11,8 +11,8 @@ defmodule SendSlam.VideoProducer do
   - warmup_ms: how long to keep broadcasting the first frame before continuing (default: 0)
   - name: registered name for the producer (default: module name)
 
-  Frames are sent to interested consumers via `Registry.dispatch/3` as
-  `{:camera_frame_read, %Evision.Mat{}}`.
+  Frames are sent to interested consumers via `Registry.dispatch/3` and tagged as
+  `{:camera_frame, event}` tuples.
   """
 
   use GenServer
@@ -37,7 +37,7 @@ defmodule SendSlam.VideoProducer do
   @type opts :: [
           {:video_path, Path.t()}
           | {:fps, pos_integer()}
-          | {:api_preference, :any | :ffmpeg | :gstreamer | :opencv_mjpeg | integer()}
+          | {:api_preference, :any | :ffmpeg | :gstreamer | :opencv_mjpeg | :images | integer()}
           | {:loop, boolean()}
       | {:warmup_ms, non_neg_integer()}
           | {:name, atom() | {:via, module(), term()} | {:global, term()}}
@@ -97,7 +97,7 @@ defmodule SendSlam.VideoProducer do
   # Internal helpers
 
   defp open_video(opts) do
-    video_path = Keyword.fetch!(opts, :video_path) |> Path.expand()
+    video_path = resolve_media_path!(Keyword.fetch!(opts, :video_path))
     api_pref = Keyword.get(opts, :api_preference)
 
     case ensure_videocap(video_path, api_pref) do
@@ -110,8 +110,18 @@ defmodule SendSlam.VideoProducer do
   end
 
   defp ensure_videocap(video_path, api_pref) when is_binary(video_path) do
-    unless File.exists?(video_path) do
-      Logger.error("VideoProducer: video file not found: #{video_path} (cwd=#{File.cwd!()})")
+    unless file_exists_or_sequence_exists?(video_path, api_pref) do
+      extra_hint =
+        case image_sequence_first_frames(video_path) do
+          [] -> ""
+          candidates -> " sequence_candidates=#{inspect(candidates)}"
+        end
+
+      Logger.error(
+        "VideoProducer: video file not found: #{video_path} (cwd=#{File.cwd!()}, app_dir=#{Application.app_dir(:send_slam)})" <>
+          extra_hint
+      )
+
       {:error, :enoent}
     else
       file_stat =
@@ -177,7 +187,7 @@ defmodule SendSlam.VideoProducer do
 
           Logger.error(
             "VideoProducer: unable to open #{video_path} (#{stat_hint}); tried apiPreference=#{inspect(apis)}; last_error=#{inspect(reason)}. " <>
-              "If this is an .mp4, your OpenCV build may lack FFmpeg support; try converting to MJPG .avi or an image sequence."
+              "If your OpenCV build lacks FFmpeg/GStreamer support (common), re-encode to MJPG .avi (keeping it <~2GB helps for AVI) or convert to an image sequence."
           )
 
           err
@@ -185,14 +195,72 @@ defmodule SendSlam.VideoProducer do
     end
   end
 
+  defp file_exists_or_sequence_exists?(path, api_pref) when is_binary(path) do
+    if File.exists?(path) do
+      true
+    else
+      wants_images? = api_pref in [:images, VCA.cv_CAP_IMAGES()]
+
+      if wants_images? or looks_like_image_sequence?(path) do
+        Enum.any?(image_sequence_first_frames(path), &File.exists?/1)
+      else
+        false
+      end
+    end
+  end
+
+  defp looks_like_image_sequence?(path) when is_binary(path) do
+    String.contains?(path, "%d") or Regex.match?(~r/%0?\d*d/, path)
+  end
+
+  defp image_sequence_first_frames(path) when is_binary(path) do
+    if looks_like_image_sequence?(path) do
+      [format_sequence_filename(path, 0), format_sequence_filename(path, 1)]
+      |> Enum.uniq()
+    else
+      []
+    end
+  end
+
+  defp format_sequence_filename(pattern, index) when is_binary(pattern) and is_integer(index) do
+    case Regex.run(~r/%0?(\d*)d/, pattern, capture: :all_but_first) do
+      [width_str] ->
+        width =
+          case width_str do
+            "" -> 0
+            s -> String.to_integer(s)
+          end
+
+        number =
+          index
+          |> Integer.to_string()
+          |> maybe_pad_leading(width)
+
+        Regex.replace(~r/%0?\d*d/, pattern, number, global: false)
+
+      _ ->
+        # Fallback for plain %d patterns
+        String.replace(pattern, "%d", Integer.to_string(index), global: false)
+    end
+  end
+
+  defp maybe_pad_leading(str, width) when is_binary(str) and is_integer(width) and width > 0 do
+    String.pad_leading(str, width, "0")
+  end
+
+  defp maybe_pad_leading(str, _width), do: str
+
   defp resolve_api_preferences(nil) do
-    [VCA.cv_CAP_FFMPEG(), VCA.cv_CAP_GSTREAMER(), VCA.cv_CAP_ANY(), VCA.cv_CAP_OPENCV_MJPEG(), VCA.cv_CAP_IMAGES()]
+    # Prefer file-capable backends. CAP_OPENCV_MJPEG and CAP_IMAGES commonly warn
+    # "can't be used to capture by name" for filenames and usually don't help here.
+    [VCA.cv_CAP_FFMPEG(), VCA.cv_CAP_GSTREAMER(), VCA.cv_CAP_ANY()]
   end
 
   defp resolve_api_preferences(:any), do: [VCA.cv_CAP_ANY()]
   defp resolve_api_preferences(:ffmpeg), do: [VCA.cv_CAP_FFMPEG()]
   defp resolve_api_preferences(:gstreamer), do: [VCA.cv_CAP_GSTREAMER()]
   defp resolve_api_preferences(:opencv_mjpeg), do: [VCA.cv_CAP_OPENCV_MJPEG()]
+  defp resolve_api_preferences(:images), do: [VCA.cv_CAP_IMAGES()]
   defp resolve_api_preferences(api) when is_integer(api), do: [api]
   defp resolve_api_preferences(_), do: resolve_api_preferences(nil)
 
@@ -275,10 +343,22 @@ defmodule SendSlam.VideoProducer do
     end
   end
 
-  defp broadcast_video_frame(%Evision.Mat{} = mat, _state) do
+  defp broadcast_video_frame(%Evision.Mat{} = mat, state) do
+    timestamp = System.monotonic_time(:microsecond) / 1_000_000
+
+    payload =
+      {:ok,
+       [
+         frame: mat,
+         calibration: state.calibration,
+         timestamp: timestamp,
+         fps: Keyword.get(state.opts, :fps, 30),
+         camera_id: Keyword.get(state.opts, :camera_id, 1)
+       ]}
+
     Registry.dispatch(@camera_registry, :clients, fn entries ->
       for {pid, _} <- entries do
-        send(pid, {:camera_frame_read, mat})
+        send(pid, {:camera_frame, payload})
       end
     end)
   end
@@ -332,7 +412,7 @@ defmodule SendSlam.VideoProducer do
         opts
 
       {nil, path} when is_binary(path) and path != "" ->
-        expanded = Path.expand(path)
+        expanded = resolve_media_path(path)
 
         case CameraCalibrator.load_from_file(expanded) do
           {:ok, calibration} ->
@@ -357,10 +437,77 @@ defmodule SendSlam.VideoProducer do
             opts
         end
 
+      {nil, nil} ->
+        # If the caller didn't specify a calibration file, try the project's default
+        # (priv/calibration/latest.json) so we can ship the current calibration.
+        default_path = CameraCalibrator.default_output_path()
+        opts = Keyword.put_new(opts, :calibration_file, default_path)
+        expanded = resolve_media_path(default_path)
+
+        case CameraCalibrator.load_from_file(expanded) do
+          {:ok, calibration} ->
+            Logger.info("VideoProducer: loaded calibration from #{expanded}")
+
+            broadcast_message(
+              {:calibration, calibration},
+              SendSlam.CalibrationRegistry
+            )
+
+            Keyword.put(opts, :calibration, calibration)
+
+          {:error, :enoent} ->
+            Logger.info(
+              "VideoProducer: default calibration file #{expanded} not found; continuing without it"
+            )
+
+            opts
+
+          {:error, reason} ->
+            Logger.warning(
+              "VideoProducer: failed to load default calibration from #{expanded}: #{inspect(reason)}"
+            )
+
+            opts
+        end
+
       _ ->
         opts
     end
   end
+
+  defp resolve_media_path!(path) do
+    resolved = resolve_media_path(path)
+
+    if is_binary(resolved) and resolved != "" do
+      resolved
+    else
+      raise ArgumentError, "expected :video_path to be a non-empty path"
+    end
+  end
+
+  # Resolves paths robustly when the app is started from varying working directories.
+  # - If `path` is absolute, use it as-is.
+  # - If `path` is relative, first try `cwd`, then `app_dir`, then `priv`.
+  defp resolve_media_path(path) when is_binary(path) and path != "" do
+    if Path.type(path) == :absolute do
+      path
+    else
+      cwd = File.cwd!()
+      app_dir = Application.app_dir(:send_slam)
+      priv_dir = Application.app_dir(:send_slam, "priv")
+
+      candidates =
+        [
+          Path.expand(path, cwd),
+          Path.expand(path, app_dir),
+          Path.expand(path, priv_dir)
+        ]
+
+      Enum.find(candidates, hd(candidates), &File.exists?/1)
+    end
+  end
+
+  defp resolve_media_path(other), do: other
 
   defp maybe_persist_calibration(calibration, opts) do
     case Keyword.get(opts, :calibration_file) do

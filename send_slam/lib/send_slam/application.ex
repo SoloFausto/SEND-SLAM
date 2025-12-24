@@ -43,31 +43,33 @@ defmodule SendSlam.Application do
         {Registry, keys: :duplicate, name: SendSlam.CameraRegistry}
       )
 
-    {:ok, camera_producer_pid} =
-      DynamicSupervisor.start_child(
-        SendSlam.Supervisor,
-        {SendSlam.CameraProducer,
-         [
-           device_index: 4,
-           width: 1280,
-           height: 800,
-           fps: 30,
-           buffer_size: 0,
-           calibration_file: CameraCalibrator.default_output_path()
-         ]}
-      )
+    # {:ok, camera_producer_pid} =
+    #   DynamicSupervisor.start_child(
+    #     SendSlam.Supervisor,
+    #     {SendSlam.CameraProducer,
+    #      [
+    #        device_index: 4,
+    #        width: 1280,
+    #        height: 800,
+    #        fps: 30,
+    #        buffer_size: 0,
+    #        calibration_file: CameraCalibrator.default_output_path()
+    #      ]}
+    #   )
 
-    # DynamicSupervisor.start_child(
-    #   SendSlam.Supervisor,
-    #   {SendSlam.VideoProducer,
-    #    [
-    #     video_path: "/home/faus/Code/SEND-SLAM/slam_test_mjpg.avi",
-    #     fps: 30,
-    #     loop: true,
-    #     warmup_ms: 20000
-    #     ]
-    #   }
-    # )
+    DynamicSupervisor.start_child(
+      SendSlam.Supervisor,
+      {SendSlam.VideoProducer,
+       [
+        video_path: "/home/faus/Videos/test1_frames/frame_%06d.png",
+        fps: 30,
+        loop: true,
+        warmup_ms: 10000,
+        api_preference: :images
+
+        ]
+      }
+    )
 
     # {:ok, cameraConsumerPid} =
     #   DynamicSupervisor.start_child(
