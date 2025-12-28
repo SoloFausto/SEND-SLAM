@@ -41,11 +41,13 @@ cd ../..
 echo "=== Cloning and building ORB_SLAM3 ==="
 git clone https://github.com/devansh0703/ORB_SLAM3.git
 cd ORB_SLAM3
+rm -f CMakeLists.txt
+mv /app/CMakeLists.txt ./CMakeLists.txt
 
 mkdir Networked
-wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/orbslam3_mono_networked.cc -O ./Networked/orbslam3_mono_networked.cc
-rm -f CMakeLists.txt
-wget https://raw.githubusercontent.com/SoloFausto/SEND-SLAM/refs/heads/main/slam_backends/orb_slam_3/CMakeLists.txt -O ./CMakeLists.txt
+cd Networked
+mv /app/orbslam3_mono_networked.cc ./orbslam3_mono_networked.cc
+cd ..
 
 
 chmod +x ./build.sh
