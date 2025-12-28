@@ -6,6 +6,8 @@ ENV ORB_SLAM3_WS_PORT=4000
 WORKDIR /app
 
 COPY docker_container_setup.sh .
+COPY ./slam_backends/orb_slam_3 .
+
 
 ENTRYPOINT [ "/app/ORB_SLAM3/Networked/orbslam3_mono_networked" ]
 
