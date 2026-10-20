@@ -15,7 +15,27 @@ The system is currently in a proof of concept status, mainly being done in the s
 8. Modify the application.ex to suit your hardware configuration (change the device index for your camera, resolution, fps, etc.)
 9. Access the SEND-SLAM camera calibrator and slam visualizer through your browser in `localhost:4000`
 10. Calibrate your camera by taking photos of a 9x6 checkerboard where each square is 25mm (use a site like https://calib.io/pages/camera-calibration-pattern-generator to create such pattern)
-11. After calibration, your pattern should be saved automatically in `priv/calibration.json`, and you should start seeing some tracking data from the algorithm.
-12. You can connect your own application to the system by connecting to `ws://localhost:4000/client` through Websockets.
+11. After calibration, the camera parameters are saved to `send_slam/priv/calibration/latest.json` by default, and you should start seeing tracking data from the algorithm.
+12. You can connect your own application to the system through `ws://localhost:4000/client`.
+
+## Client WebSocket protocol
+
+The browser panel and external applications use the same `/client` WebSocket. A new
+connection receives no camera or pose data until it subscribes. Send JSON text
+messages to choose streams:
+
+```json
+{"type":"subscribe","streams":["camera","pose"]}
+```
+
+Use `{"type":"unsubscribe","streams":["camera"]}` to stop a stream. Each
+subscription change returns a JSON `subscriptions` message listing the active
+streams. The `camera` stream sends binary JPEG frames. The `pose` stream sends
+JSON messages with `{"type":"pose","payload":...}`. A client may subscribe to
+either stream independently.
+
+To calibrate, send `{"type":"calibrate","frames":["data:image/jpeg;base64,..."]}`
+with checkerboard images. The response is a JSON `calibration` message with
+`status` set to `ok` or `error`. Invalid requests receive a JSON `error` message.
 
 

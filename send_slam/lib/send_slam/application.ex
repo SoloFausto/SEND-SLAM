@@ -12,13 +12,6 @@ defmodule SendSlam.Application do
     opts = [strategy: :one_for_one, name: SendSlam.Supervisor]
     {:ok, _supervisor_pid} = DynamicSupervisor.start_link(opts)
 
-    # Start a Registry to track WebSocket clients for broadcasting
-    _ =
-      DynamicSupervisor.start_child(
-        SendSlam.Supervisor,
-        {Registry, keys: :duplicate, name: SendSlam.WebSocketRegistry}
-      )
-
     _ =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
