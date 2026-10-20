@@ -1,8 +1,6 @@
 defmodule SendSlam.ImageTimer do
   @moduledoc """
-  GenServer that listens for `{:camera_frame, event}` messages broadcast via
-  `SendSlam.CameraRegistry`, serializes them to MessagePack, and forwards them to
-  every backend registered in `SendSlam.BackendRegistry`.
+  GenServer that receives camera frames and logs FPS.
   """
 
   use GenServer
@@ -12,7 +10,6 @@ defmodule SendSlam.ImageTimer do
   alias Nx
   alias SendSlam.CalibrationCache
 
-  @registry SendSlam.BackendRegistry
 
   @camera_registry SendSlam.CameraRegistry
 
@@ -27,8 +24,7 @@ defmodule SendSlam.ImageTimer do
   end
 
   @impl true
-  def handle_info({:camera_frame, event}, state) do
-    state = process_event(event, state)
+  def handle_info({:camera_frame, _}, state) do
 
     # FPS accounting: increment count and log once per second
     now = monotonic_seconds()
@@ -48,15 +44,6 @@ defmodule SendSlam.ImageTimer do
     {:noreply, state}
   end
 
-  defp process_event({:error, reason}, state) do
-    Logger.warning("Frame error: #{inspect(reason)}")
-    state
-  end
-
-  defp process_event(other, state) do
-    Logger.debug("Ignoring unexpected camera event: #{inspect(other)}")
-    state
-  end
   defp monotonic_seconds do
     System.monotonic_time(:nanosecond) / 1_000_000_000
   end

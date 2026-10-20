@@ -10,7 +10,7 @@ defmodule SendSlam.Application do
   @impl true
   def start(_type, _args) do
     opts = [strategy: :one_for_one, name: SendSlam.Supervisor]
-    {:ok, _supervisor_pid} = DynamicSupervisor.start_link(opts)
+    {:ok, supervisor_pid} = DynamicSupervisor.start_link(opts)
 
     _ =
       DynamicSupervisor.start_child(
@@ -36,7 +36,7 @@ defmodule SendSlam.Application do
         {Registry, keys: :duplicate, name: SendSlam.CameraRegistry}
       )
 
-    {:ok, camera_producer_pid} =
+    {:ok, cameraProducerPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {SendSlam.CameraProducer,
@@ -44,7 +44,7 @@ defmodule SendSlam.Application do
            device_index: 4,
            width: 1280,
            height: 800,
-           fps: 30,
+           fps: 120,
            buffer_size: 0,
            calibration_file: CameraCalibrator.default_output_path()
          ]}
@@ -70,8 +70,7 @@ defmodule SendSlam.Application do
     #     {SendSlam.ImageTimer, []}
     #   )
 
-    {:ok, pid} = ThousandIsland.start_link(port: 5000, handler_module: SendSlam.SlamHandler)
-
+    {:ok, islandPid} = ThousandIsland.start_link(port: 5000, handler_module: SendSlam.SlamHandler)
 
     {:ok, dockerHandlerPid} =
       DynamicSupervisor.start_child(
@@ -88,18 +87,17 @@ defmodule SendSlam.Application do
          ]}
       )
 
-
-    {:ok, image_consumer_pid} =
+    {:ok, imageConsumerPid} =
       DynamicSupervisor.start_child(
         SendSlam.Supervisor,
         {SendSlam.ImageConsumer, []}
       )
 
-    {:ok, banditPid} =
-      DynamicSupervisor.start_child(
-        SendSlam.Supervisor,
-        {Bandit, plug: SendSlam.WebServer, port: 4000}
-      )
+    # {:ok, banditPid} =
+    #   DynamicSupervisor.start_child(
+    #     SendSlam.Supervisor,
+    #     {Bandit, plug: SendSlam.WebServer, port: 4000}
+    #   )
 
     # {:ok, _pose_bandit_pid} =
     #   DynamicSupervisor.start_child(
@@ -107,8 +105,8 @@ defmodule SendSlam.Application do
     #     {Bandit, plug: SendSlam.PoseWebServer, port: 4001}
     #   )
 
-    GenServer.call(dockerHandlerPid, :start_container)
+    # GenServer.call(dockerHandlerPid, :start_container)
 
-    {:ok, pid}
+    {:ok, supervisor_pid}
   end
 end

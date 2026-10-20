@@ -29,7 +29,8 @@ defmodule SendSlam.MixProject do
       {:plug, "~> 1.16"},
       {:jason, "~> 1.4"},
       {:msgpax, "~> 2.3"},
-      {:nx, "~> 0.10.0"}
+      {:nx, "~> 0.10.0"},
+      {:rustler, "~> 0.37.1"}
       # {:dep_from_hexpm, "~> 0.3.0"},
       # {:dep_from_git, git: "https://github.com/elixir-lang/my_dep.git", tag: "0.1.0"}
     ]

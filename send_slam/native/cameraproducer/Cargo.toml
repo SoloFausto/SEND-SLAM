@@ -1,0 +1,21 @@
+[package]
+name = "cameraproducer"
+version = "0.1.0"
+authors = []
+edition = "2021"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rustler = "0.37.2"
+
+[dependencies.nokhwa]
+version = "0.10.10"
+# Use the native input backends, enable WGPU integration
+features = ["input-native", "output-wgpu", "output-threaded", "camera-sync-impl"]
+
+
+[dependencies.image]
+version = "0.25.9"
+features = ["default-formats"]

@@ -6,5 +6,7 @@
     "**/.git/**": true,
     "**/node_modules/**": true,
     "**/.vscode/**": true
-  }
+  },
+  "snyk.advanced.autoSelectOrganization": true,
+  "cmake.sourceDirectory": "/home/faus/Code/SEND-SLAM/slam_backends/orb_slam_3"
 }

@@ -16,10 +16,7 @@ defmodule SendSlam.CameraProducer do
 
   use GenServer
   require Logger
-  use Bitwise
 
-  alias Evision.VideoCapture, as: VC
-  alias Evision.VideoCaptureProperties, as: VCP
   alias SendSlam.CameraCalibrator
 
   @calibration_registry SendSlam.CalibrationRegistry
@@ -63,8 +60,8 @@ defmodule SendSlam.CameraProducer do
   end
 
   @impl true
-  def handle_info({:camera_frame_read, %Evision.Mat{} = mat}, state) do
-    broadcast_camera_frame(mat, state)
+  def handle_info({:camera_frame_read, png_buffer, width, height}, state) do
+    broadcast_camera_frame(png_buffer, width, height, state)
     {:noreply, state}
   end
 
@@ -101,45 +98,17 @@ defmodule SendSlam.CameraProducer do
     height = Keyword.fetch!(opts, :height)
     fps = Keyword.fetch!(opts, :fps)
 
-    case ensure_videocap(index) do
-      {:ok, cap} ->
-        fourcc = Evision.VideoWriter.fourcc(?M, ?J, ?P, ?G)
-
-        _ = set_prop(cap, VCP.cv_CAP_PROP_FOURCC(), fourcc, "FOURCC")
-        _ = set_prop(cap, VCP.cv_CAP_PROP_FRAME_WIDTH(), width, "WIDTH")
-        _ = set_prop(cap, VCP.cv_CAP_PROP_FRAME_HEIGHT(), height, "HEIGHT")
-        _ = set_prop(cap, VCP.cv_CAP_PROP_FPS(), fps, "FPS")
-
-        log_camera_properties(index, cap)
-        {:ok, cap}
-
-      {:error, _} = err -> err
-    end
-  end
-
-  defp ensure_videocap(index) do
-    case VC.videoCapture(index) do
-      %VC{} = cap ->
-        case VC.isOpened(cap) do
-          true ->
-            {:ok, cap}
-
-          _ ->
-            case VC.open(cap, index) do
-              true -> {:ok, cap}
-              _ -> {:error, :open_failed}
-            end
-        end
-
-      {:error, reason} ->
+    try do
+      cap = SendSlam.Native.CameraProducer.open_camera(index, width, height, fps)
+      Logger.info("CameraProducer: opened index=#{index} (Rust NIF)")
+      {:ok, cap}
+    catch
+      :error, reason ->
         {:error, reason}
-
-      other ->
-        {:error, {:unexpected_videocap, other}}
     end
   end
 
-  defp maybe_open_camera(%{cap: %VC{}} = state), do: state
+  defp maybe_open_camera(%{cap: cap} = state) when is_reference(cap), do: state
 
   defp maybe_open_camera(%{opts: opts} = state) do
     case open_camera(opts) do
@@ -151,7 +120,7 @@ defmodule SendSlam.CameraProducer do
   end
 
   # Reader management
-  defp ensure_reader(%{cap: %VC{} = cap, reader_pid: pid} = state) do
+  defp ensure_reader(%{cap: cap, reader_pid: pid} = state) when is_reference(cap) do
     cond do
       is_pid(pid) and Process.alive?(pid) -> state
       true ->
@@ -172,28 +141,34 @@ defmodule SendSlam.CameraProducer do
   defp stop_reader(state), do: state
 
   defp reader_loop(server, cap) do
-    case VC.read(cap) do
-      %Evision.Mat{} = mat ->
-        send(server, {:camera_frame_read, mat})
-        reader_loop(server, cap)
-      false ->
-        send(server, {:camera_reader_error, :eof})
-        Process.sleep(50)
-        reader_loop(server, cap)
-      {:error, reason} ->
+    try do
+      case SendSlam.Native.CameraProducer.read_frame(cap) do
+        {:ok, png_buffer, width, height} ->
+          send(server, {:camera_frame_read, png_buffer, width, height})
+          reader_loop(server, cap)
+        {:error, reason} ->
+          send(server, {:camera_reader_error, reason})
+          Process.sleep(200)
+          reader_loop(server, cap)
+      end
+    catch
+      :error, reason ->
+        Logger.error("CameraProducer reader error: #{inspect(reason)}\nStacktrace: #{inspect(__STACKTRACE__)}")
         send(server, {:camera_reader_error, reason})
         Process.sleep(200)
         reader_loop(server, cap)
     end
   end
 
-  defp broadcast_camera_frame(%Evision.Mat{} = mat, state) do
+  defp broadcast_camera_frame(png_buffer, width, height, state) do
     timestamp = System.monotonic_time(:microsecond) / 1_000_000
 
     payload =
       {:ok,
        [
-         frame: mat,
+         frame: png_buffer,
+         width: width,
+         height: height,
          calibration: state.calibration,
          timestamp: timestamp,
          fps: Keyword.get(state.opts, :fps, 30),
@@ -207,40 +182,12 @@ defmodule SendSlam.CameraProducer do
     end)
   end
 
-  defp release_camera(%VC{} = cap), do: VC.release(cap)
-  defp release_camera(_), do: :ok
+  defp release_camera(_cap), do: :ok
 
   defp release_and_nil_cap(%{cap: cap} = state) do
     release_camera(cap)
     %{state | cap: nil}
   end
-
-  defp set_prop(cap, prop, value, name) do
-    case VC.set(cap, prop, value) do
-      true -> true
-      false ->
-        Logger.warning("CameraProducer: failed to set #{name} to #{inspect(value)}")
-        false
-    end
-  end
-
-  defp log_camera_properties(index, cap) do
-    actual_w = VC.get(cap, VCP.cv_CAP_PROP_FRAME_WIDTH())
-    actual_h = VC.get(cap, VCP.cv_CAP_PROP_FRAME_HEIGHT())
-    actual_fps = VC.get(cap, VCP.cv_CAP_PROP_FPS())
-    code = VC.get(cap, VCP.cv_CAP_PROP_FOURCC())
-    fourcc = fourcc_to_string(code)
-
-    Logger.info(
-      "CameraProducer: opened index=#{index} #{trunc(actual_w)}x#{trunc(actual_h)} @ #{Float.round(actual_fps * 1.0, 2)} fps, fourcc=#{fourcc} (#{trunc(code)})"
-    )
-  end
-
-  defp fourcc_to_string(code) when is_number(code) do
-    c = trunc(code)
-    << (c &&& 0xFF)::8, ((c >>> 8) &&& 0xFF)::8, ((c >>> 16) &&& 0xFF)::8, ((c >>> 24) &&& 0xFF)::8 >>
-  end
-  defp fourcc_to_string(_), do: "????"
 
   defp maybe_attach_calibration(opts) do
     case {Keyword.get(opts, :calibration), Keyword.get(opts, :calibration_file)} do
